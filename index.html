@@ -56,6 +56,14 @@ header{position:sticky;top:0;z-index:1200;background:rgba(6,11,19,.92);backdrop-
   background:rgba(6,11,19,.85);border:1px solid var(--line2);color:var(--cyn);
   font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:6px 10px;cursor:pointer}
 .radar-toggle.on{color:var(--grn);border-color:#1d5a34}
+.base-toggle{position:absolute;left:10px;top:46px;z-index:1000;pointer-events:auto;
+  background:rgba(6,11,19,.85);border:1px solid var(--line2);color:var(--cyn);
+  font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:6px 10px;cursor:pointer}
+#legend{position:absolute;right:10px;bottom:24px;z-index:1000;display:none;
+  background:rgba(6,11,19,.85);border:1px solid var(--line);padding:6px 9px;font-size:9px;letter-spacing:.5px;max-width:200px}
+#legend .lg-h{color:var(--dim);letter-spacing:1.5px;margin-bottom:3px;font-size:8px}
+#legend .lg-r{display:flex;align-items:center;gap:6px;margin:2px 0;color:var(--txt)}
+#legend .sw{width:12px;height:9px;flex-shrink:0;border:1px solid rgba(255,255,255,.35)}
 /* tooltips for swell bands + markers */
 .swell-tip{background:rgba(6,14,24,.88)!important;border:1px solid rgba(69,214,255,.5)!important;
   color:var(--cyn)!important;font-family:var(--mono)!important;font-size:10px!important;
@@ -126,6 +134,8 @@ footer{max-width:900px;margin:0 auto;padding:0 12px 34px;font-size:8.5px;color:#
 <div id="mapwrap">
   <div id="map"></div>
   <button class="radar-toggle on" id="radarBtn">◉ RADAR LOOP</button>
+  <button class="base-toggle" id="baseBtn">🌐 MAP: DARK</button>
+  <div id="legend"><div class="lg-h">ACTIVE ALERTS</div><div id="legendRows"></div></div>
   <div class="map-hud" id="radar-stamp">NEXRAD COMPOSITE · —</div>
   <div class="map-hud" id="storm-chip"></div>
 </div>
@@ -186,8 +196,61 @@ setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTi
 
 /* ---------------- map ---------------- */
 const map=L.map("map",{zoomControl:true, attributionControl:true}).setView([30.05,-87.15],8);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  {attribution:"©OpenStreetMap ©CARTO",maxZoom:18}).addTo(map);
+const baseDark=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  {attribution:"©OpenStreetMap ©CARTO",maxZoom:18});
+const baseSat=L.layerGroup([
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {attribution:"Esri, Maxar, Earthstar Geographics",maxZoom:18}),
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    {maxZoom:18,opacity:.85})
+]);
+baseDark.addTo(map);
+let satMode=false;
+document.getElementById("baseBtn").onclick=()=>{
+  satMode=!satMode;
+  if(satMode){map.removeLayer(baseDark);baseSat.addTo(map);}
+  else{map.removeLayer(baseSat);baseDark.addTo(map);}
+  $("baseBtn").textContent=satMode?"🌐 MAP: SAT":"🌐 MAP: DARK";
+};
+
+/* --- NWS watch/warning polygons --- */
+const alertLayer=L.layerGroup().addTo(map);
+function alertColor(ev){
+  ev=ev.toLowerCase();
+  if(/hurricane warning|extreme wind/.test(ev))return"#c026d3";
+  if(/hurricane watch/.test(ev))return"#ff5cd0";
+  if(/tropical storm warning/.test(ev))return"#ff4d4d";
+  if(/tropical storm watch/.test(ev))return"#ffb020";
+  if(/surge/.test(ev))return"#a855f7";
+  if(/tornado/.test(ev))return"#ef4444";
+  if(/flood/.test(ev))return"#22c55e";
+  if(/marine|small craft|gale|surf|rip/.test(ev))return"#45d6ff";
+  if(/thunderstorm/.test(ev))return"#ffe45c";
+  return"#94a3b8";
+}
+async function loadAlertPolys(){
+  try{
+    const [land,marine]=await Promise.all([
+      jget("https://api.weather.gov/alerts/active?status=actual&area=FL,AL,MS,LA&limit=120"),
+      jget("https://api.weather.gov/alerts/active?status=actual&region=gm&limit=80").catch(()=>({features:[]}))
+    ]);
+    alertLayer.clearLayers();
+    const seen={};
+    [...(land.features||[]),...(marine.features||[])].forEach(ft=>{
+      const p=ft.properties, col=alertColor(p.event);
+      seen[p.event]=col;
+      if(!ft.geometry)return;                       // zone-coded alerts without polygons
+      L.geoJSON(ft,{style:{color:col,weight:1.5,opacity:.9,fillColor:col,fillOpacity:.14}})
+        .bindPopup(`<div class="pp-h">${p.event.toUpperCase()}</div>`+
+          `${(p.headline||"").slice(0,160)}…<br><span style="color:var(--dim)">UNTIL ${p.ends?new Date(p.ends).toLocaleString():"FURTHER NOTICE"}</span>`)
+        .addTo(alertLayer);
+    });
+    const rows=Object.entries(seen);
+    $("legend").style.display=rows.length?"block":"none";
+    $("legendRows").innerHTML=rows.map(([ev,c])=>
+      `<div class="lg-r"><div class="sw" style="background:${c}"></div>${ev.toUpperCase()}</div>`).join("");
+  }catch(e){/* keep last good polygons */}
+}
 
 /* --- radar loop (IEM NEXRAD mosaic, last 50 min, 6 frames) --- */
 const radarSuffix=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
@@ -447,7 +510,8 @@ async function loadStorms(){
 
 /* ---------------- boot + refresh cadence ---------------- */
 function upd(){$("upd").textContent="LIVE";}
-loadNow().then(upd);   loadForecast(); loadTides(); loadBuoys(); loadSwell(); loadStorms();
+loadNow().then(upd);   loadForecast(); loadTides(); loadBuoys(); loadSwell(); loadStorms(); loadAlertPolys();
+setInterval(loadAlertPolys,600000);
 setInterval(loadNow,600000);
 setInterval(loadForecast,600000);
 setInterval(loadTides,900000);
