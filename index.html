@@ -150,7 +150,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v2.6</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v2.7</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -243,7 +243,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v2.6<br>
+        ORIOLE BEACH TACTICAL WEATHER v2.7<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -280,7 +280,7 @@ const store={
 setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTimeString("en-US",{hour12:false}); },1000);
 
 /* ================= MAP ================= */
-const map=L.map("map",{zoomControl:true}).setView([30.05,-87.15],8);
+const map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([30.05,-87.15],8);
 map.createPane("radarPane");   map.getPane("radarPane").style.zIndex=350;   // above ALL basemaps
 /* radar rendering mode swaps by zoom: crisp NEXRAD regional, server-smoothed close-up (no CSS filters = no lag) */
 map.on("zoomend",()=>applyRadarMode&&applyRadarMode());
@@ -341,6 +341,7 @@ const gBuoys=L.layerGroup(), gSwell=L.layerGroup(), gRings=L.layerGroup(), alert
 /* hurricane tracker groups: master contains track always; cone + spaghetti are sub-toggles */
 const gTrack=L.layerGroup(), gCone=L.layerGroup(), gSpag=L.layerGroup(), gOutlook=L.layerGroup();
 const gHurr=L.layerGroup([gOutlook,gTrack]);
+let hurrLoaded=false;
 
 const homeIcon=L.divIcon({className:"",html:
  `<div style="width:16px;height:16px;border:2px solid #45d6ff;background:rgba(69,214,255,.25);transform:rotate(45deg);border-radius:3px"></div>`,
@@ -406,9 +407,10 @@ Object.entries(S).forEach(([k,s])=>{
     <label class="sw2"><input type="checkbox" id="sw-${k}" ${s.val?"checked":""}><span class="knob"></span></label>`;
   $("setList").appendChild(row);
   row.querySelector("input").addEventListener("change",e=>{
-    s.val=e.target.checked;store.set(k,s.val);s.apply(s.val);
+    s.val=e.target.checked;store.set(k,s.val);
+    try{s.apply(s.val);}catch(err){console.warn("setting",k,err);}
   });
-  s.apply(s.val);
+  try{s.apply(s.val);}catch(err){console.warn("setting init",k,err);}
 });
 /* map quick buttons mirror the settings */
 $("radarBtn").onclick=()=>{S.radar.val=!S.radar.val;store.set("radar",S.radar.val);
@@ -647,7 +649,6 @@ async function loadStorms(){
 }
 
 /* ================= HURRICANE TRACKER (NHC live GIS) ================= */
-let hurrLoaded=false;
 const NHC_SVC="https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer";
 const P=(o,...keys)=>{for(const k of keys){for(const kk of Object.keys(o||{})){if(kk.toLowerCase()===k.toLowerCase()&&o[kk]!=null&&o[kk]!=="")return o[kk];}}return null;};
 function windColor(w){return w==null?"#94a3b8":w>=96?"#ff5cd0":w>=64?"#ff5c5c":w>=34?"#45d6ff":"#94a3b8";}
@@ -819,8 +820,9 @@ async function loadFish(){
   }catch(e){$("fishScore").innerHTML=`<div class="err">fishing data unavailable — retrying</div>`;}
 }
 /* ================= BOOT ================= */
-buildRadar(); setInterval(buildRadar,300000);
-loadNow(); loadForecast(); loadTides().then(loadFish); loadBuoys(); loadSwell(); loadStorms(); loadAlertPolys();
+const safe=f=>{try{const r=f();if(r&&r.catch)r.catch(()=>{});}catch(e){console.warn(e);}};
+safe(buildRadar); setInterval(()=>safe(buildRadar),300000);
+[loadNow,loadForecast,()=>loadTides().then(loadFish),loadBuoys,loadSwell,loadStorms,loadAlertPolys].forEach(safe);
 setInterval(loadNow,600000);
 setInterval(loadForecast,600000);
 setInterval(loadTides,900000);
@@ -828,8 +830,8 @@ setInterval(()=>{loadBuoys();loadSwell();},1200000);
 setInterval(loadStorms,1800000);
 setInterval(loadAlertPolys,600000);
 setInterval(loadFish,1200000);
-loadHurricanes();
-setInterval(loadHurricanes,1200000);
+safe(loadHurricanes);
+setInterval(()=>safe(loadHurricanes),1200000);
 addEventListener("resize",()=>{if(tideCache)drawTide(...tideCache);map.invalidateSize();});
 </script>
 </body>
