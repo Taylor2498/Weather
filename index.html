@@ -93,7 +93,7 @@ tr:last-child td{border-bottom:none}
 .spec{display:flex;align-items:center;gap:12px;padding:11px 10px;border:1px solid var(--line);
   background:var(--card2);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:transform .1s}
 .spec:active{transform:scale(.985)}
-.spec .em{font-size:26px;width:34px;text-align:center;flex-shrink:0}
+.spec .em{width:44px;height:26px;flex-shrink:0;display:flex;align-items:center}
 .spec .nm{font-family:var(--disp);font-size:14px;color:var(--bright);font-weight:700}
 .spec .se{font-size:9px;color:var(--dim);letter-spacing:.5px;margin-top:2px}
 .spec .se b{color:var(--grn)}
@@ -107,7 +107,7 @@ tr:last-child td{border-bottom:none}
   max-width:640px;max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
   padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
 #fmHead{display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--card);padding-bottom:12px;border-bottom:1px solid var(--line)}
-#fmEmoji{font-size:40px}
+#fmEmoji{width:56px;height:34px;flex-shrink:0;display:flex;align-items:center}
 #fmName{font-family:var(--disp);font-size:20px;color:var(--bright);font-weight:700}
 #fmSeason{font-size:10px;letter-spacing:.5px;margin-top:2px}
 #fmClose{margin-left:auto}
@@ -218,7 +218,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v3.6</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.7</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -323,7 +323,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v3.6<br>
+        ORIOLE BEACH TACTICAL WEATHER v3.7<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         SPECIES REGS ARE APPROXIMATE — VERIFY AT MYFWC.COM<br>RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -1072,90 +1072,111 @@ function moonPhase(d){
   const names=["NEW","WAXING CRESCENT","FIRST QUARTER","WAXING GIBBOUS","FULL","WANING GIBBOUS","LAST QUARTER","WANING CRESCENT"];
   return{age,ill,name:names[Math.floor(((age+syn/16)%syn)/(syn/8))]};
 }
+/* ===== FISH CARICATURES (inline SVG, sharp at any size, never break) ===== */
+function fishSVG(shape,c){
+  c=c||"#8fд";  // fallback
+  const body={
+    // generic torpedo/panfish/elongate/flat/deep templates, tuned per species
+    snapper:'<path d="M6 16 C14 6, 40 6, 52 16 C40 26, 14 26, 6 16 Z" fill="COL"/><path d="M52 16 l10 -7 v14 z" fill="COL"/><circle cx="15" cy="14" r="1.6" fill="#04121f"/><path d="M30 8 v16 M38 9 v14" stroke="#04121f22" stroke-width="1"/>',
+    elong:'<path d="M4 16 C16 9, 42 9, 54 15 C42 23, 16 23, 4 16 Z" fill="COL"/><path d="M54 15 l9 -5 v11 z" fill="COL"/><path d="M20 9 l4 -4 M27 9 l4 -4" stroke="COL" stroke-width="2"/><circle cx="12" cy="14.5" r="1.4" fill="#04121f"/>',
+    mackerel:'<path d="M3 16 C16 10, 44 10, 56 15 C44 22, 16 22, 3 16 Z" fill="COL"/><path d="M56 15 l8 -6 l-2 6 l2 6 z" fill="COL"/><path d="M24 11 v10 M32 11 v10 M40 12 v8" stroke="#04121f33" stroke-width="1"/><circle cx="11" cy="14.5" r="1.4" fill="#04121f"/>',
+    deep:'<path d="M8 16 C14 4, 44 4, 52 16 C44 28, 14 28, 8 16 Z" fill="COL"/><path d="M52 16 l10 -8 v16 z" fill="COL"/><circle cx="17" cy="13" r="1.7" fill="#04121f"/>',
+    flat:'<path d="M6 18 C20 8, 46 8, 58 14 C50 22, 24 26, 6 18 Z" fill="COL"/><circle cx="20" cy="13" r="1.6" fill="#04121f"/><circle cx="26" cy="12.5" r="1.6" fill="#04121f"/>',
+    stripe:'<path d="M8 16 C14 5, 42 5, 50 16 C42 27, 14 27, 8 16 Z" fill="COL"/><path d="M50 16 l11 -7 v14 z" fill="COL"/><path d="M20 7 v18 M28 6 v20 M36 7 v18" stroke="#04121f55" stroke-width="2"/><circle cx="16" cy="13" r="1.6" fill="#04121f"/>',
+    tarpon:'<path d="M4 16 C16 7, 44 7, 56 15 C44 24, 16 24, 4 16 Z" fill="COL"/><path d="M56 15 l9 -7 v15 z" fill="COL"/><circle cx="13" cy="13.5" r="2" fill="#04121f"/><path d="M22 9 l0 14 M30 8 l0 16" stroke="#ffffff55" stroke-width="1.5"/>',
+    reddrum:'<path d="M6 16 C14 6, 42 6, 52 16 C42 26, 14 26, 6 16 Z" fill="COL"/><path d="M52 16 l10 -7 v14 z" fill="COL"/><circle cx="48" cy="16" r="2.4" fill="#04121f"/><circle cx="15" cy="14" r="1.5" fill="#04121f"/>',
+    cobia:'<path d="M3 16 C18 11, 46 11, 58 15 C46 21, 18 21, 3 16 Z" fill="COL"/><path d="M58 15 l7 -4 v8 z" fill="COL"/><path d="M14 12 h34" stroke="#04121f66" stroke-width="1.6"/><circle cx="11" cy="14.5" r="1.3" fill="#04121f"/>',
+    pompano:'<path d="M8 16 C14 8, 40 7, 50 16 C40 25, 14 24, 8 16 Z" fill="COL"/><path d="M50 16 l11 -8 l-3 8 l3 8 z" fill="COL"/><circle cx="16" cy="14" r="1.5" fill="#04121f"/>',
+  }[shape]||'';
+  return '<svg viewBox="0 0 66 32" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">'+body.replace(/COL/g,c)+'</svg>';
+}
 /* ===== SPECIES DATABASE — months are 1-12; regs approximate, verify before keeping ===== */
 const SPECIES=[
- {k:"redsnapper",wiki:"Northern red snapper",n:"RED SNAPPER",em:"\uD83D\uDC1F",months:[6,7,8],
-  seasonTxt:"Fed season typically opens early summer",
+ {k:"redsnapper",wiki:"Northern red snapper",n:"RED SNAPPER",shape:"snapper",col:"#e8543f",months:[5,6,7,9,10,11],
+  seasonTxt:"Gulf private rec 2026: May 22-Jul 31 + Sep/Oct/Nov weekends",
+  seasonNote:"State-set season, changes yearly & runs in split weekend blocks in fall. Confirm exact open days at myfwc.com.",
   size:'16" TL',bag:"2 / person",where:"Reefs, wrecks & hard bottom 60-120  ft",
   bait:"Live cigar minnows, pinfish, cut bonito, vertical jigs",
   best:"First light & slack tide; drop straight to structure",
-  habits:"Structure-oriented, aggressive; stage in tight schools over relief. Bigger fish sit just off the main pack.",
-  notes:"Federal reef fish permit + venting tool & descending device required offshore. Season dates change yearly."},
- {k:"redfish",wiki:"Red drum",n:"REDFISH (RED DRUM)",em:"\uD83D\uDC1F",months:[1,2,3,4,5,6,7,8,9,10,11,12],
-  seasonTxt:"Year-round resident",
+  habits:"Structure-oriented and aggressive; stage in tight schools over relief. Bigger fish sit just off the main pack.",
+  notes:"State Reef Fish Angler registration required. Venting tool & descending device required. Dates change every year."},
+ {k:"redfish",wiki:"Red drum",n:"REDFISH (RED DRUM)",shape:"reddrum",col:"#c9803f",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Open year-round (slot fishery)",
   size:'18"-27" slot',bag:"1 / person",where:"Sound grass, oyster bars, dock lights, passes",
   bait:"Live shrimp, cut mullet, gold spoons, soft plastics",
   best:"Moving water around tide changes; night dock-light bite in summer heat",
   habits:"Tail in shallow grass on high water; school heavily in fall. Bronze backs push wakes on the flats.",
-  notes:"Strict slot in FL — measure carefully. Bull reds over slot must be released."},
- {k:"spottedtrout",wiki:"Spotted seatrout",n:"SPECKLED TROUT",em:"\uD83C\uDFA3",months:[1,2,3,4,5,6,7,8,9,10,11,12],
-  seasonTxt:"Year-round; best spring & fall",
-  size:'15"-19" slot',bag:"3 / person (FL NW)",where:"Grass flats 2-5 ft, potholes, deeper holes in heat",
-  bait:"Topwater at dawn, soft plastics under cork, live shrimp",
+  notes:"Strict slot in NW FL. Bull reds over slot must be released. 1 fish per harvester."},
+ {k:"spottedtrout",wiki:"Spotted seatrout",n:"SPECKLED TROUT",shape:"elong",col:"#7f8a5a",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Open year-round; best spring & fall",
+  size:'15"-19" slot',bag:"3 / person (NW zone)",where:"Grass flats 2-5 ft, potholes, deeper holes in heat",
+  bait:"Topwater at dawn, soft plastics under a cork, live shrimp",
   best:"First & last light; overcast extends the bite",
-  habits:"Ambush predators over grass; gators go solo. Drop to deeper water midday in summer.",
-  notes:"Handle gently — trout are fragile. Slot & bag vary by FL zone."},
- {k:"kingmackerel",wiki:"King mackerel",n:"KING MACKEREL",em:"\uD83D\uDC1F",months:[4,5,6,9,10,11],
-  seasonTxt:"Spring & fall runs nearshore",
+  habits:"Ambush predators over grass; gator trout go solo. Drop to deeper water midday in summer.",
+  notes:"Slot & bag vary by FL zone (NW is 3). One over 19\" allowed within bag."},
+ {k:"kingmackerel",wiki:"King mackerel",n:"KING MACKEREL",shape:"mackerel",col:"#6f8fa6",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Open year-round; best spring & fall runs",
   size:'24" FL',bag:"2 / person",where:"Nearshore reefs, passes, bait pods",
   bait:"Slow-trolled ribbonfish/dusters, live hardtails, spoons",
   best:"Dawn over bait schools; wire leader a must for the teeth",
   habits:"Fast pelagic; smoker kings run big in spring. Sky-rocket through bait balls.",
-  notes:"Use stinger rigs. Watch for spanish/king size confusion."},
- {k:"spanishmackerel",wiki:"Atlantic Spanish mackerel",n:"SPANISH MACKEREL",em:"\uD83D\uDC1F",months:[4,5,6,7,8,9,10],
-  seasonTxt:"Warm months, beach & bay mouth",
+  notes:"Use stinger rigs. Don't confuse undersize kings with spanish."},
+ {k:"spanishmackerel",wiki:"Atlantic Spanish mackerel",n:"SPANISH MACKEREL",shape:"mackerel",col:"#8fb0c4",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Open year-round; warm months best",
   size:'12" FL',bag:"15 / person",where:"Beaches, pass mouths, over bait",
   bait:"Straw/Clark spoons fast-retrieved, Gotcha plugs, small jigs",
   best:"Moving water & feeding birds; run-and-gun the schools",
   habits:"Fast, toothy, travels in schools chasing glass minnows. Explosive surface feeds.",
-  notes:"Light wire or long fluoro helps. Great eating fresh, poor frozen."},
- {k:"tarpon",wiki:"Atlantic tarpon",n:"TARPON",em:"\uD83D\uDC1F",months:[5,6,7,8],
-  seasonTxt:"Summer migration along the beach",
+  notes:"Light wire or long fluoro helps. Great eating fresh."},
+ {k:"tarpon",wiki:"Atlantic tarpon",n:"TARPON",shape:"tarpon",col:"#a9b6c2",months:[5,6,7,8],
+  seasonTxt:"Summer beach migration; catch & release",
   size:"Catch & release",bag:"0 (release)",where:"Beach trough, passes, Sound on the move",
   bait:"Live crabs, mullet, big swimbaits, tarpon flies",
   best:"Calm mornings; sight-cast rolling/daisy-chaining fish",
-  habits:"Silver kings migrate east-west along the beach all summer; roll on the surface to gulp air.",
-  notes:"Gear kept in water for photos; a FL tarpon tag is required to possess (you won't — release them)."},
- {k:"mangrovesnapper",wiki:"Mangrove snapper",n:"MANGROVE SNAPPER",em:"\uD83D\uDC1F",months:[6,7,8,9],
-  seasonTxt:"Best summer; year-round on structure",
-  size:'10" TL',bag:"5 / person",where:"Bridges, docks, jetties, nearshore wrecks",
+  habits:"Silver kings migrate along the beach all summer; roll on the surface to gulp air.",
+  notes:"Keep fish in the water; a harvest tag is required to possess (you won't — release them)."},
+ {k:"mangrovesnapper",wiki:"Mangrove snapper",n:"MANGROVE SNAPPER",shape:"snapper",col:"#7d6a55",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Open year-round; best summer",
+  size:'10" TL (Gulf)',bag:"5 / person",where:"Bridges, docks, jetties, nearshore wrecks",
   bait:"Live shrimp, small live baits, light fluoro leader",
   best:"After dark around lights; they get leader-shy by day",
   habits:"Wary and structure-tight; bigger 'mangos' hold on offshore wrecks. Notoriously line-shy.",
-  notes:"Downsize leader & hooks. Bigger fish offshore reach several pounds."},
- {k:"cobia",wiki:"Cobia",n:"COBIA",em:"\uD83D\uDC1F",months:[3,4,5],
+  notes:"Downsize leader & hooks. Part of the 10-snapper aggregate."},
+ {k:"cobia",wiki:"Cobia",n:"COBIA",shape:"cobia",col:"#5c6b57",months:[3,4,5],
   seasonTxt:"Spring migration along the beach",
-  size:'36" FL',bag:"1 / person",where:"Sight-fished along the beach, buoys, rays & turtles",
+  size:'36" FL (Gulf)',bag:"1 / person, 2 / vessel",where:"Sight-fished along the beach, buoys, rays & turtles",
   bait:"Bucktail jigs, live eels/pinfish, big soft plastics",
   best:"Sunny calm days from a tower spotting cruisers",
   habits:"Curious cruisers that follow rays and shadow structure; often travel singly or in small pods.",
-  notes:"FL minimum & bag tightened in recent years — verify current rule."},
- {k:"flounder",wiki:"Gulf flounder",n:"FLOUNDER",em:"\uD83D\uDC1F",months:[10,11],
-  seasonTxt:"Fall run best; closed part of fall in FL",
+  notes:"Gulf limit tightened in recent years to 36\" and 1/person. Verify current rule."},
+ {k:"flounder",wiki:"Gulf flounder",n:"FLOUNDER",shape:"flat",col:"#9a8b6a",months:[1,2,3,4,5,6,7,8,9,12],
+  seasonTxt:"Open most of year; FL closure Oct 15-Nov 30",
+  seasonNote:"Florida closes flounder harvest Oct 15-Nov 30 for the spawn.",
   size:'14" TL',bag:"5 / person",where:"Passes, sandy edges near structure, creek mouths",
   bait:"Live bull minnows, mud minnows, jigs bounced on bottom",
-  best:"Outgoing tide in the passes during the fall migration",
+  best:"Outgoing tide in the passes; fall pre-closure bite is strong",
   habits:"Ambush flatfish burying on sand; stage in passes leaving for the Gulf in fall.",
-  notes:"FL has a fall closure (typically mid-Oct to Nov) — check dates."},
- {k:"sheepshead",wiki:"Sheepshead (fish)",n:"SHEEPSHEAD",em:"\uD83D\uDC1F",months:[1,2,3,12],
-  seasonTxt:"Winter/early-spring around structure",
+  notes:"Respect the Oct 15-Nov 30 closure. Gig or hook & line."},
+ {k:"sheepshead",wiki:"Sheepshead (fish)",n:"SHEEPSHEAD",shape:"stripe",col:"#c7c3b2",months:[1,2,3,4,11,12],
+  seasonTxt:"Open year-round; peak winter/early spring spawn",
   size:'12" TL',bag:"8 / person",where:"Bridge pilings, jetties, docks, reefs",
   bait:"Live fiddler crabs, shrimp, oysters — tight to structure",
   best:"Cold-front stability; feel for the subtle bite",
   habits:"Convict-striped structure nibblers with human-like teeth; stack on pilings to spawn late winter.",
-  notes:"Set the hook early — they steal bait fast."},
- {k:"amberjack",wiki:"Greater amberjack",n:"AMBERJACK",em:"\uD83D\uDC1F",months:[5,6,7,8],
-  seasonTxt:"Open summer window (federal)",
-  size:'34" FL',bag:"1 / person",where:"Deep wrecks & structure 120-300 ft",
+  notes:"Set the hook early — they steal bait fast. Best bite Jan-Mar."},
+ {k:"amberjack",wiki:"Greater amberjack",n:"GREATER AMBERJACK",shape:"elong",col:"#b8a06a",months:[8,9,10],
+  seasonTxt:"Gulf 2026: reopens Aug 1; fed window Sep 1-Oct 14",
+  seasonNote:"Gulf AJ closed much of the year for spawning; open window is short & set annually. Confirm dates.",
+  size:'34" FL (Gulf)',bag:"1 / person",where:"Deep wrecks & structure 120-300 ft",
   bait:"Live hardtails, big jigs, butterfly jigs",
   best:"Drop to the wreck and hold on — reef donkeys pull hard",
   habits:"Powerful deep pelagics that swarm wrecks; the 'reef donkey' nickname is earned.",
-  notes:"Federal season is a narrow window — verify open dates."},
- {k:"pompano",wiki:"Florida pompano",n:"POMPANO",em:"\uD83D\uDC1F",months:[3,4,5,10,11],
-  seasonTxt:"Spring & fall surf runs",
+  notes:"Short annual season — verify open dates before targeting to keep."},
+ {k:"pompano",wiki:"Florida pompano",n:"POMPANO",shape:"pompano",col:"#d9c98a",months:[1,2,3,4,10,11,12],
+  seasonTxt:"Open year-round; spring & fall surf runs best",
   size:'11" FL',bag:"6 / person",where:"Surf troughs, pass edges, sandy beaches",
   bait:"Sand fleas, Fishbites, small shrimp on pompano rigs",
-  best:"Incoming tide in the surf; look for the second bar trough",
+  best:"Incoming tide in the surf; fish the second-bar trough",
   habits:"Fast surf feeders rooting sand fleas from the wash; travel the beach in schools.",
   notes:"Prized eating. A sand-flea rake fills the cooler."},
 ];
@@ -1171,7 +1192,7 @@ function renderTargets(){
     const on=sp.months.includes(m);
     const seasonBadge=on?'<b>IN SEASON</b>':'<b class="cl">OUT OF SEASON</b>';
     return '<div class="spec" data-k="'+sp.k+'">'+
-      '<div class="em">'+sp.em+'</div>'+
+      '<div class="em">'+fishSVG(sp.shape,sp.col)+'</div>'+
       '<div><div class="nm">'+sp.n+'</div>'+
       '<div class="se">'+seasonBadge+' \u00b7 '+sp.seasonTxt+'</div></div>'+
       '<div class="chev">\u203A</div></div>';
@@ -1180,7 +1201,7 @@ function renderTargets(){
 function openFish(k){
   const sp=SPECIES.find(x=>x.k===k);if(!sp)return;
   const m=new Date().getMonth()+1, on=sp.months.includes(m);
-  $("fmEmoji").textContent=sp.em;
+  $("fmEmoji").innerHTML=fishSVG(sp.shape,sp.col);
   $("fmName").textContent=sp.n;
   $("fmSeason").innerHTML=(on?'<span style="color:var(--grn)">\u25CF IN SEASON NOW</span>':'<span style="color:var(--red)">\u25CB OUT OF SEASON</span>')+' \u00b7 '+sp.seasonTxt;
   $("fmBody").innerHTML=
@@ -1189,6 +1210,7 @@ function openFish(k){
       '<div class="rg"><span>BAG LIMIT</span><b>'+sp.bag+'</b></div>'+
       '<div class="rg"><span>OPEN MONTHS</span><b>'+sp.months.map(x=>monthName[x]).join(" ")+'</b></div>'+
     '</div></div>'+
+    (sp.seasonNote?'<div class="fmSec"><h4>SEASON NOTE</h4><p style="color:var(--amb)">⚠ '+sp.seasonNote+'</p></div>':'')+
     '<div class="fmSec"><h4>WHERE TO FIND</h4><p>'+sp.where+'</p></div>'+
     '<div class="fmSec"><h4>BEST BAITS</h4><p>'+sp.bait+'</p></div>'+
     '<div class="fmSec"><h4>BEST TIMES</h4><p>'+sp.best+'</p></div>'+
