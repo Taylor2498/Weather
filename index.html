@@ -259,30 +259,38 @@ const baseSat=L.layerGroup([
     {maxZoom:18,opacity:.85})
 ]);
 
-/* radar loop — RainViewer frames (reliable CDN) with IEM NEXRAD fallback; radarPane draws OVER any basemap */
-let radarLayers=[],radarTimes=[],rf=0;
-function setRadarFrames(defs){
+/* radar loop — IEM NEXRAD primary (classic NOAA look), RainViewer auto-fallback; radarPane draws OVER any basemap */
+let radarLayers=[],radarTimes=[],rf=0,radarErrs=0,usingFallback=false;
+function setRadarFrames(defs,watchErrors){
   radarLayers.forEach(l=>map.removeLayer(l));
-  radarLayers=defs.map(d=>L.tileLayer(d.url,{opacity:0,pane:"radarPane",maxZoom:12}));
+  radarLayers=defs.map(d=>L.tileLayer(d.url,{opacity:0,pane:"radarPane",maxNativeZoom:12,maxZoom:18}));
   radarTimes=defs.map(d=>d.label);
+  if(watchErrors){
+    radarErrs=0;
+    radarLayers[radarLayers.length-1].on("tileerror",()=>{
+      if(++radarErrs>5&&!usingFallback){usingFallback=true;buildRainviewer();}
+    });
+  }
   if(S.radar?.val!==false)radarLayers.forEach(l=>l.addTo(map));
   rf=0;
 }
-async function buildRadar(){
+function buildIEM(){
+  const sfx=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
+  setRadarFrames(sfx.map((s,i)=>({
+    url:`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
+    label:s?`T−${50-i*10}M`:"LATEST"})),true);
+}
+async function buildRainviewer(){
   try{
     const j=await jget("https://api.rainviewer.com/public/weather-maps.json");
     const frames=j.radar.past.slice(-6);
     setRadarFrames(frames.map(f=>({
       url:`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
       label:new Date(f.time*1000).toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"})
-    })));
-  }catch(e){
-    const sfx=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
-    setRadarFrames(sfx.map((s,i)=>({
-      url:`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
-      label:s?`T−${50-i*10}M`:"LATEST"})));
-  }
+    })),false);
+  }catch(e){}
 }
+function buildRadar(){usingFallback?buildRainviewer():buildIEM();}
 setInterval(()=>{
   if(!S.radar.val||!radarLayers.length)return;
   radarLayers.forEach((l,i)=>l.setOpacity(i===rf?0.62:0));
