@@ -80,6 +80,15 @@ tr:last-child td{border-bottom:none}
 .addrow select,.addrow input{background:var(--card2);border:1px solid var(--line2);color:var(--txt);
   font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:10px;flex:1;min-width:90px}
 .addrow input::placeholder{color:#3d5878}
+#lightbox{position:fixed;inset:0;background:rgba(2,4,8,.97);z-index:3000;display:none;touch-action:none;overflow:hidden}
+#lightbox.open{display:block}
+#lbImg{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;-webkit-user-drag:none;user-select:none;max-width:none}
+#lbClose{position:fixed;top:calc(14px + env(safe-area-inset-top));right:14px;z-index:3001}
+#lbTitle{position:fixed;top:calc(16px + env(safe-area-inset-top));left:16px;z-index:3001;color:var(--cyn);
+  font-size:11px;letter-spacing:2px}
+#lbHint{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
+  z-index:3001;color:var(--dim);font-size:9px;letter-spacing:1.5px}
+#camImg{cursor:pointer}
 .hours{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .hr{min-width:66px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:9px 6px;text-align:center;flex-shrink:0}
 .hr .t{font-size:9px;color:var(--dim)}
@@ -171,7 +180,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v3.4</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.5</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -203,7 +212,7 @@ nav button:active{transform:scale(.93)}
             <button class="btn2" id="camClose">CLOSE</button>
           </div>
           <img id="camImg" alt="buoy camera">
-          <div id="camNote">LIVE IMAGE FROM THE BUOY MAST CAMERA - NOAA BUOYCAM</div>
+          <div id="camNote">LIVE IMAGE FROM THE BUOY MAST CAMERA - NOAA BUOYCAM - TAP IMAGE TO ENLARGE</div>
         </div>
         <div class="addrow">
           <select id="addBuoySel"><option value="">+ ADD BUOY FROM DIRECTORY</option></select>
@@ -284,7 +293,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v3.4<br>
+        ORIOLE BEACH TACTICAL WEATHER v3.5<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -292,6 +301,13 @@ nav button:active{transform:scale(.93)}
     </div>
   </div>
 
+</div>
+
+<div id="lightbox">
+  <span id="lbTitle">BUOYCAM</span>
+  <button class="btn2" id="lbClose">CLOSE</button>
+  <img id="lbImg" alt="buoy camera enlarged">
+  <div id="lbHint">PINCH TO ZOOM - DRAG TO PAN - DOUBLE-TAP TO ZOOM - THE STRIP IS 6 CAMERA ANGLES</div>
 </div>
 
 <nav id="tabbar">
@@ -718,6 +734,69 @@ $("buoyTbl").addEventListener("click",e=>{
   }
 });
 $("camClose").onclick=()=>{$("camBox").style.display="none";};
+/* ---- fullscreen pinch-zoom lightbox ---- */
+const lbEl=$("lightbox"),lbImg=$("lbImg");
+let lbScale=1,lbMin=1,lbTx=0,lbTy=0;
+const lbPts=new Map();let lbDist0=0,lbScale0=1,lbTx0=0,lbTy0=0,lbMidX=0,lbMidY=0,lbLastTap=0;
+function lbApply(){lbImg.style.transform="translate("+lbTx+"px,"+lbTy+"px) scale("+lbScale+")";}
+function openLightbox(src,title){
+  $("lbTitle").textContent=title||"BUOYCAM";
+  lbEl.classList.add("open");
+  lbImg.onload=()=>{
+    const vw=lbEl.clientWidth||360,vh=lbEl.clientHeight||640;
+    const nw=lbImg.naturalWidth||2880,nh=lbImg.naturalHeight||300;
+    lbImg.style.width=nw+"px";
+    lbMin=vw/nw;
+    lbScale=Math.min(Math.max((vw*2.4)/nw,lbMin),vh*0.8/nh);
+    if(!isFinite(lbScale)||lbScale<=0)lbScale=lbMin;
+    lbTx=0;lbTy=(vh-nh*lbScale)/2;
+    lbApply();
+  };
+  lbImg.src=src;
+  if(lbImg.complete&&lbImg.naturalWidth)lbImg.onload();
+}
+$("camImg").onclick=()=>openLightbox($("camImg").src,$("camTitle").textContent);
+$("lbClose").onclick=()=>{lbEl.classList.remove("open");lbPts.clear();};
+lbEl.addEventListener("pointerdown",e=>{
+  if(e.target&&e.target.id==="lbClose")return;
+  e.preventDefault();
+  lbPts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  lbScale0=lbScale;lbTx0=lbTx;lbTy0=lbTy;
+  const pts=[...lbPts.values()];
+  if(pts.length===2){
+    lbDist0=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y)||1;
+    lbMidX=(pts[0].x+pts[1].x)/2;lbMidY=(pts[0].y+pts[1].y)/2;
+  }else if(pts.length===1){
+    const now=Date.now();
+    if(now-lbLastTap<300){
+      const target=lbScale>lbMin*1.4?lbMin:lbMin*3;
+      lbTx=e.clientX-(e.clientX-lbTx)*(target/lbScale);
+      lbTy=e.clientY-(e.clientY-lbTy)*(target/lbScale);
+      lbScale=target;lbApply();
+    }
+    lbLastTap=now;
+  }
+},{passive:false});
+lbEl.addEventListener("pointermove",e=>{
+  if(!lbPts.has(e.pointerId))return;
+  e.preventDefault();
+  const p=lbPts.get(e.pointerId);
+  const dx=e.clientX-p.x,dy=e.clientY-p.y;
+  const pts=[...lbPts.entries()];
+  if(pts.length===2){
+    const cur=pts.map(x=>x[0]===e.pointerId?{x:e.clientX,y:e.clientY}:x[1]);
+    const dist=Math.hypot(cur[0].x-cur[1].x,cur[0].y-cur[1].y)||1;
+    const ns=Math.min(Math.max(lbScale0*dist/lbDist0,lbMin*0.8),lbMin*10);
+    lbTx=lbMidX-(lbMidX-lbTx0)*(ns/lbScale0);
+    lbTy=lbMidY-(lbMidY-lbTy0)*(ns/lbScale0);
+    lbScale=ns;lbApply();
+  }else{
+    lbTx=lbTx0+dx;lbTy=lbTy0+dy;lbApply();
+  }
+},{passive:false});
+const lbUp=e=>{lbPts.delete(e.pointerId);};
+lbEl.addEventListener("pointerup",lbUp);
+lbEl.addEventListener("pointercancel",lbUp);
 function fillBuoySel(){
   const sel=$("addBuoySel");
   sel.innerHTML="<option value=\"\">+ ADD BUOY FROM DIRECTORY</option>"+
