@@ -89,6 +89,39 @@ tr:last-child td{border-bottom:none}
 #lbHint{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
   z-index:3001;color:var(--dim);font-size:9px;letter-spacing:1.5px}
 #camImg{cursor:pointer}
+/* fishing target list */
+.spec{display:flex;align-items:center;gap:12px;padding:11px 10px;border:1px solid var(--line);
+  background:var(--card2);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:transform .1s}
+.spec:active{transform:scale(.985)}
+.spec .em{font-size:26px;width:34px;text-align:center;flex-shrink:0}
+.spec .nm{font-family:var(--disp);font-size:14px;color:var(--bright);font-weight:700}
+.spec .se{font-size:9px;color:var(--dim);letter-spacing:.5px;margin-top:2px}
+.spec .se b{color:var(--grn)}
+.spec .se b.cl{color:var(--red)}
+.spec .chev{margin-left:auto;color:var(--dim);font-size:16px}
+/* fish detail modal */
+#fishModal{position:fixed;inset:0;background:rgba(2,4,8,.72);z-index:3000;display:none;
+  align-items:flex-end;justify-content:center}
+#fishModal.open{display:flex}
+#fmCard{background:var(--card);border:1px solid var(--line2);border-radius:20px 20px 0 0;width:100%;
+  max-width:640px;max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+#fmHead{display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--card);padding-bottom:12px;border-bottom:1px solid var(--line)}
+#fmEmoji{font-size:40px}
+#fmName{font-family:var(--disp);font-size:20px;color:var(--bright);font-weight:700}
+#fmSeason{font-size:10px;letter-spacing:.5px;margin-top:2px}
+#fmClose{margin-left:auto}
+#fmBody{padding-top:12px}
+.fmSec{margin-bottom:14px}
+.fmSec h4{font-size:9px;letter-spacing:2px;color:var(--cyn);margin-bottom:5px;font-weight:500}
+.fmSec p{font-size:12px;line-height:1.6;color:var(--txt)}
+.fmReg{display:flex;gap:8px;flex-wrap:wrap}
+.fmReg .rg{border:1px solid var(--line2);border-radius:8px;padding:5px 9px;font-size:10px}
+.fmReg .rg b{color:var(--bright);display:block;font-size:13px;font-family:var(--disp)}
+.fmReg .rg span{color:var(--dim);font-size:8px;letter-spacing:1px}
+#fmPhoto img{width:100%;border-radius:12px;border:1px solid var(--line);display:block;cursor:pointer}
+#fmPhoto .cred{font-size:8px;color:var(--dim);margin-top:4px;letter-spacing:.5px;line-height:1.4}
+#fmPhoto .load{font-size:10px;color:var(--dim);padding:16px;text-align:center}
 .hours{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .hr{min-width:66px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:9px 6px;text-align:center;flex-shrink:0}
 .hr .t{font-size:9px;color:var(--dim)}
@@ -125,6 +158,11 @@ tr:last-child td{border-bottom:none}
 #legend .lg-h{color:var(--dim);letter-spacing:1.5px;margin-bottom:3px;font-size:8px}
 #legend .lg-r{display:flex;align-items:center;gap:6px;margin:2px 0;color:var(--txt)}
 #legend .sw{width:12px;height:9px;flex-shrink:0;border-radius:2px;border:1px solid rgba(255,255,255,.35)}
+#surgeLegend{position:absolute;right:12px;bottom:calc(210px + env(safe-area-inset-bottom));z-index:1000;display:none;
+  background:rgba(6,11,19,.88);border:1px solid var(--line);border-radius:12px;padding:8px 11px;font-size:9px;max-width:200px}
+#surgeLegend .lg-h{color:var(--dim);letter-spacing:1.5px;margin-bottom:3px;font-size:8px}
+#surgeLegend .lg-r{display:flex;align-items:center;gap:6px;margin:2px 0;color:var(--txt)}
+#surgeLegend .sw{width:12px;height:9px;flex-shrink:0;border-radius:2px;border:1px solid rgba(255,255,255,.35)}
 /* leaflet dark chrome */
 .leaflet-container{font-family:var(--mono);background:#04070d}
 .leaflet-control-attribution{background:rgba(6,11,19,.75)!important;color:#3d5878!important;font-size:8px!important}
@@ -180,7 +218,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v3.5</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.6</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -199,6 +237,7 @@ nav button:active{transform:scale(.93)}
     <div id="tl"><button id="tlPlay">⏸</button><div id="tlDots"></div><span id="tlTime">—</span></div>
     <div id="storm-chip"></div>
     <div id="legend"><div class="lg-h">ACTIVE ALERTS</div><div id="legendRows"></div></div>
+    <div id="surgeLegend"></div>
   </div>
 
   <!-- MARINE -->
@@ -270,17 +309,8 @@ nav button:active{transform:scale(.93)}
       <div class="c-bd"><table id="fishCond"></table></div>
     </div>
     <div class="card">
-      <div class="c-hd"><h2>JULY TARGETS — PENSACOLA / GULF BREEZE</h2><span class="st">SEASONAL</span></div>
-      <div class="c-bd"><table id="specTbl">
-        <tr><th>SPECIES</th><th>WHERE</th><th>NOTES</th></tr>
-        <tr><td><b>RED SNAPPER</b></td><td>Reefs/wrecks 60-120ft</td><td class="cg">Season open — live cigar minnows</td></tr>
-        <tr><td><b>KING MACKEREL</b></td><td>Nearshore, passes</td><td>Slow-troll dusters at dawn</td></tr>
-        <tr><td><b>SPECKLED TROUT</b></td><td>Grass flats 2-5ft</td><td>Topwater first light, soft plastics after</td></tr>
-        <tr><td><b>REDFISH</b></td><td>Sound, dock lights</td><td>Night bite strong in heat</td></tr>
-        <tr><td><b>TARPON</b></td><td>Beach, passes</td><td>Migrating schools — crab flies/swimbaits</td></tr>
-        <tr><td><b>MANGROVE SNAPPER</b></td><td>Bridges, structure</td><td>Light leader, live shrimp</td></tr>
-        <tr><td><b>SPANISH MACKEREL</b></td><td>Beach, bay mouth</td><td>Straw rigs, fast retrieve</td></tr>
-      </table></div>
+      <div class="c-hd"><h2 id="targHdr">TARGETS</h2><span class="st" id="targSt">IN SEASON NOW</span></div>
+      <div class="c-bd" style="padding:8px"><div id="specList"></div></div>
     </div>
   </div>
 
@@ -293,9 +323,9 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v3.5<br>
+        ORIOLE BEACH TACTICAL WEATHER v3.6<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
-        RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
+        SPECIES REGS ARE APPROXIMATE — VERIFY AT MYFWC.COM<br>RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
       </div>
     </div>
@@ -308,6 +338,14 @@ nav button:active{transform:scale(.93)}
   <button class="btn2" id="lbClose">CLOSE</button>
   <img id="lbImg" alt="buoy camera enlarged">
   <div id="lbHint">PINCH TO ZOOM - DRAG TO PAN - DOUBLE-TAP TO ZOOM - THE STRIP IS 6 CAMERA ANGLES</div>
+</div>
+
+<div id="fishModal">
+  <div id="fmCard">
+    <div id="fmHead"><span id="fmEmoji"></span><div><div id="fmName"></div><div id="fmSeason"></div></div>
+      <button class="btn2" id="fmClose">CLOSE</button></div>
+    <div id="fmBody"></div>
+  </div>
 </div>
 
 <nav id="tabbar">
@@ -442,6 +480,8 @@ function radarSetVisible(v){
 const gBuoys=L.layerGroup(), gSwell=L.layerGroup(), gRings=L.layerGroup(), alertLayer=L.layerGroup();
 /* hurricane tracker groups: master contains track always; cone + spaghetti are sub-toggles */
 const gTrack=L.layerGroup(), gCone=L.layerGroup(), gSpag=L.layerGroup(), gOutlook=L.layerGroup();
+const gSurge=L.layerGroup();
+let surgeLoaded=false;
 const gHurr=L.layerGroup([gOutlook,gTrack]);
 let hurrLoaded=false;
 const gMe=L.layerGroup();
@@ -457,14 +497,16 @@ function locate(pan){
         opacity:.4,fillColor:"#45d6ff",fillOpacity:.08,interactive:false}).addTo(gMe);
     }else{meMarker.setLatLng(ll);meCircle.setLatLng(ll).setRadius(pos.coords.accuracy||50);}
     if(pan)map.setView(ll,Math.max(map.getZoom(),11));
+    drawRings(ll[0],ll[1]);
   },()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:120000});
 }
 
-const homeIcon=L.divIcon({className:"",html:
- `<div style="width:16px;height:16px;border:2px solid #45d6ff;background:rgba(69,214,255,.25);transform:rotate(45deg);border-radius:3px"></div>`,
- iconSize:[16,16],iconAnchor:[8,8]});
-L.marker(HOME,{icon:homeIcon}).addTo(map).bindPopup(`<div class="pp-h">HOME · ORIOLE BEACH</div>30.372N 87.088W`);
-[25,50].forEach(nm=>L.circle(HOME,{radius:nm*1852,color:"#39ff6b",weight:1,opacity:.35,fill:false,dashArray:"3 6"}).addTo(gRings));
+/* home marker removed — range rings follow live location instead, drawn once we have a fix */
+let ringsDrawn=false;
+function drawRings(lat,lon){
+  if(ringsDrawn)return;ringsDrawn=true;
+  [25,50].forEach(nm=>L.circle([lat,lon],{radius:nm*1852,color:"#39ff6b",weight:1,opacity:.35,fill:false,dashArray:"3 6"}).addTo(gRings));
+}
 
 const BUOY_DIR=[
  {id:"42001",name:"MID GULF",lat:25.90,lon:-89.67},
@@ -530,6 +572,8 @@ const S={
     apply(v){v?gRings.addTo(map):map.removeLayer(gRings);}},
   me:{label:"MY LOCATION",desc:"Live position dot — stays on your device",dflt:true,
     apply(v){if(v){gMe.addTo(map);locate(false);}else map.removeLayer(gMe);}},
+  surge:{label:"STORM SURGE",desc:"NHC potential peak surge inundation (active systems only)",dflt:false,
+    apply(v){if(v){gSurge.addTo(map);if(!surgeLoaded)loadSurge();}else map.removeLayer(gSurge);}},
   hurr:{label:"HURRICANE TRACKER",desc:"NHC storms, invests, outlook areas — auto-detects new systems",dflt:true,
     apply(v){if(v){gHurr.addTo(map);if(!hurrLoaded)loadHurricanes();}else map.removeLayer(gHurr);}},
   cone:{label:"FORECAST CONE",desc:"Official NHC cone of uncertainty",dflt:true,sub:true,
@@ -891,6 +935,34 @@ async function loadStorms(){
   }catch(e){}
 }
 
+/* ================= STORM SURGE (NHC Potential Storm Surge Flooding) ================= */
+async function loadSurge(){
+  const SURGE_SVC="https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer";
+  const bands=[{c:"#1f4fff",l:"> 1 FT"},{c:"#00d4ff",l:"> 3 FT"},{c:"#ffd21f",l:"> 6 FT"},{c:"#ff3b3b",l:"> 9 FT"}];
+  try{
+    const meta=await jget(SURGE_SVC+"?f=json");
+    const ids=meta.layers.filter(l=>/surge|inundation/i.test(l.name)&&l.subLayerIds==null).map(l=>l.id);
+    gSurge.clearLayers();let any=false;
+    for(const id of ids){
+      const g=await jget(`${SURGE_SVC}/${id}/query?where=1%3D1&outFields=*&returnGeometry=true&geometryPrecision=3&outSR=4326&f=geojson`).catch(()=>null);
+      if(!g||!g.features||!g.features.length)continue;
+      any=true;
+      g.features.forEach(f=>{
+        if(!f.geometry)return;
+        const pr=f.properties||{};
+        const val=+P(pr,"gridcode","GRIDCODE","Class","CLASS","Elev","ELEV")||0;
+        const band=val>=4?bands[3]:val>=3?bands[2]:val>=2?bands[1]:bands[0];
+        L.geoJSON(f,{pane:"alertPane",style:{color:band.c,weight:0,fillColor:band.c,fillOpacity:.35}})
+          .bindPopup(`<div class="pp-h">POTENTIAL STORM SURGE</div>Peak inundation ${band.l} above ground`)
+          .addTo(gSurge);
+      });
+    }
+    surgeLoaded=true;
+    $("surgeLegend").style.display=(any&&S.surge.val)?"block":"none";
+    if(any)$("surgeLegend").innerHTML=`<div class="lg-h">STORM SURGE (FT ABOVE GROUND)</div>`+
+      bands.map(b=>`<div class="lg-r"><div class="sw" style="background:${b.c}"></div>${b.l}</div>`).join("");
+  }catch(e){}
+}
 /* ================= HURRICANE TRACKER (NHC live GIS) ================= */
 const NHC_SVC="https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer";
 const P=(o,...keys)=>{for(const k of keys){for(const kk of Object.keys(o||{})){if(kk.toLowerCase()===k.toLowerCase()&&o[kk]!=null&&o[kk]!=="")return o[kk];}}return null;};
@@ -1000,6 +1072,156 @@ function moonPhase(d){
   const names=["NEW","WAXING CRESCENT","FIRST QUARTER","WAXING GIBBOUS","FULL","WANING GIBBOUS","LAST QUARTER","WANING CRESCENT"];
   return{age,ill,name:names[Math.floor(((age+syn/16)%syn)/(syn/8))]};
 }
+/* ===== SPECIES DATABASE — months are 1-12; regs approximate, verify before keeping ===== */
+const SPECIES=[
+ {k:"redsnapper",wiki:"Northern red snapper",n:"RED SNAPPER",em:"\uD83D\uDC1F",months:[6,7,8],
+  seasonTxt:"Fed season typically opens early summer",
+  size:'16" TL',bag:"2 / person",where:"Reefs, wrecks & hard bottom 60-120  ft",
+  bait:"Live cigar minnows, pinfish, cut bonito, vertical jigs",
+  best:"First light & slack tide; drop straight to structure",
+  habits:"Structure-oriented, aggressive; stage in tight schools over relief. Bigger fish sit just off the main pack.",
+  notes:"Federal reef fish permit + venting tool & descending device required offshore. Season dates change yearly."},
+ {k:"redfish",wiki:"Red drum",n:"REDFISH (RED DRUM)",em:"\uD83D\uDC1F",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Year-round resident",
+  size:'18"-27" slot',bag:"1 / person",where:"Sound grass, oyster bars, dock lights, passes",
+  bait:"Live shrimp, cut mullet, gold spoons, soft plastics",
+  best:"Moving water around tide changes; night dock-light bite in summer heat",
+  habits:"Tail in shallow grass on high water; school heavily in fall. Bronze backs push wakes on the flats.",
+  notes:"Strict slot in FL — measure carefully. Bull reds over slot must be released."},
+ {k:"spottedtrout",wiki:"Spotted seatrout",n:"SPECKLED TROUT",em:"\uD83C\uDFA3",months:[1,2,3,4,5,6,7,8,9,10,11,12],
+  seasonTxt:"Year-round; best spring & fall",
+  size:'15"-19" slot',bag:"3 / person (FL NW)",where:"Grass flats 2-5 ft, potholes, deeper holes in heat",
+  bait:"Topwater at dawn, soft plastics under cork, live shrimp",
+  best:"First & last light; overcast extends the bite",
+  habits:"Ambush predators over grass; gators go solo. Drop to deeper water midday in summer.",
+  notes:"Handle gently — trout are fragile. Slot & bag vary by FL zone."},
+ {k:"kingmackerel",wiki:"King mackerel",n:"KING MACKEREL",em:"\uD83D\uDC1F",months:[4,5,6,9,10,11],
+  seasonTxt:"Spring & fall runs nearshore",
+  size:'24" FL',bag:"2 / person",where:"Nearshore reefs, passes, bait pods",
+  bait:"Slow-trolled ribbonfish/dusters, live hardtails, spoons",
+  best:"Dawn over bait schools; wire leader a must for the teeth",
+  habits:"Fast pelagic; smoker kings run big in spring. Sky-rocket through bait balls.",
+  notes:"Use stinger rigs. Watch for spanish/king size confusion."},
+ {k:"spanishmackerel",wiki:"Atlantic Spanish mackerel",n:"SPANISH MACKEREL",em:"\uD83D\uDC1F",months:[4,5,6,7,8,9,10],
+  seasonTxt:"Warm months, beach & bay mouth",
+  size:'12" FL',bag:"15 / person",where:"Beaches, pass mouths, over bait",
+  bait:"Straw/Clark spoons fast-retrieved, Gotcha plugs, small jigs",
+  best:"Moving water & feeding birds; run-and-gun the schools",
+  habits:"Fast, toothy, travels in schools chasing glass minnows. Explosive surface feeds.",
+  notes:"Light wire or long fluoro helps. Great eating fresh, poor frozen."},
+ {k:"tarpon",wiki:"Atlantic tarpon",n:"TARPON",em:"\uD83D\uDC1F",months:[5,6,7,8],
+  seasonTxt:"Summer migration along the beach",
+  size:"Catch & release",bag:"0 (release)",where:"Beach trough, passes, Sound on the move",
+  bait:"Live crabs, mullet, big swimbaits, tarpon flies",
+  best:"Calm mornings; sight-cast rolling/daisy-chaining fish",
+  habits:"Silver kings migrate east-west along the beach all summer; roll on the surface to gulp air.",
+  notes:"Gear kept in water for photos; a FL tarpon tag is required to possess (you won't — release them)."},
+ {k:"mangrovesnapper",wiki:"Mangrove snapper",n:"MANGROVE SNAPPER",em:"\uD83D\uDC1F",months:[6,7,8,9],
+  seasonTxt:"Best summer; year-round on structure",
+  size:'10" TL',bag:"5 / person",where:"Bridges, docks, jetties, nearshore wrecks",
+  bait:"Live shrimp, small live baits, light fluoro leader",
+  best:"After dark around lights; they get leader-shy by day",
+  habits:"Wary and structure-tight; bigger 'mangos' hold on offshore wrecks. Notoriously line-shy.",
+  notes:"Downsize leader & hooks. Bigger fish offshore reach several pounds."},
+ {k:"cobia",wiki:"Cobia",n:"COBIA",em:"\uD83D\uDC1F",months:[3,4,5],
+  seasonTxt:"Spring migration along the beach",
+  size:'36" FL',bag:"1 / person",where:"Sight-fished along the beach, buoys, rays & turtles",
+  bait:"Bucktail jigs, live eels/pinfish, big soft plastics",
+  best:"Sunny calm days from a tower spotting cruisers",
+  habits:"Curious cruisers that follow rays and shadow structure; often travel singly or in small pods.",
+  notes:"FL minimum & bag tightened in recent years — verify current rule."},
+ {k:"flounder",wiki:"Gulf flounder",n:"FLOUNDER",em:"\uD83D\uDC1F",months:[10,11],
+  seasonTxt:"Fall run best; closed part of fall in FL",
+  size:'14" TL',bag:"5 / person",where:"Passes, sandy edges near structure, creek mouths",
+  bait:"Live bull minnows, mud minnows, jigs bounced on bottom",
+  best:"Outgoing tide in the passes during the fall migration",
+  habits:"Ambush flatfish burying on sand; stage in passes leaving for the Gulf in fall.",
+  notes:"FL has a fall closure (typically mid-Oct to Nov) — check dates."},
+ {k:"sheepshead",wiki:"Sheepshead (fish)",n:"SHEEPSHEAD",em:"\uD83D\uDC1F",months:[1,2,3,12],
+  seasonTxt:"Winter/early-spring around structure",
+  size:'12" TL',bag:"8 / person",where:"Bridge pilings, jetties, docks, reefs",
+  bait:"Live fiddler crabs, shrimp, oysters — tight to structure",
+  best:"Cold-front stability; feel for the subtle bite",
+  habits:"Convict-striped structure nibblers with human-like teeth; stack on pilings to spawn late winter.",
+  notes:"Set the hook early — they steal bait fast."},
+ {k:"amberjack",wiki:"Greater amberjack",n:"AMBERJACK",em:"\uD83D\uDC1F",months:[5,6,7,8],
+  seasonTxt:"Open summer window (federal)",
+  size:'34" FL',bag:"1 / person",where:"Deep wrecks & structure 120-300 ft",
+  bait:"Live hardtails, big jigs, butterfly jigs",
+  best:"Drop to the wreck and hold on — reef donkeys pull hard",
+  habits:"Powerful deep pelagics that swarm wrecks; the 'reef donkey' nickname is earned.",
+  notes:"Federal season is a narrow window — verify open dates."},
+ {k:"pompano",wiki:"Florida pompano",n:"POMPANO",em:"\uD83D\uDC1F",months:[3,4,5,10,11],
+  seasonTxt:"Spring & fall surf runs",
+  size:'11" FL',bag:"6 / person",where:"Surf troughs, pass edges, sandy beaches",
+  bait:"Sand fleas, Fishbites, small shrimp on pompano rigs",
+  best:"Incoming tide in the surf; look for the second bar trough",
+  habits:"Fast surf feeders rooting sand fleas from the wash; travel the beach in schools.",
+  notes:"Prized eating. A sand-flea rake fills the cooler."},
+];
+const monthName=["","JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+function renderTargets(){
+  const m=new Date().getMonth()+1;
+  $("targHdr").textContent=monthName[m]+" TARGETS — PENSACOLA / GULF BREEZE";
+  const inSeason=SPECIES.filter(sp=>sp.months.includes(m));
+  const off=SPECIES.filter(sp=>!sp.months.includes(m));
+  const ordered=inSeason.concat(off);
+  $("targSt").textContent=inSeason.length+" IN SEASON";
+  $("specList").innerHTML=ordered.map(sp=>{
+    const on=sp.months.includes(m);
+    const seasonBadge=on?'<b>IN SEASON</b>':'<b class="cl">OUT OF SEASON</b>';
+    return '<div class="spec" data-k="'+sp.k+'">'+
+      '<div class="em">'+sp.em+'</div>'+
+      '<div><div class="nm">'+sp.n+'</div>'+
+      '<div class="se">'+seasonBadge+' \u00b7 '+sp.seasonTxt+'</div></div>'+
+      '<div class="chev">\u203A</div></div>';
+  }).join("");
+}
+function openFish(k){
+  const sp=SPECIES.find(x=>x.k===k);if(!sp)return;
+  const m=new Date().getMonth()+1, on=sp.months.includes(m);
+  $("fmEmoji").textContent=sp.em;
+  $("fmName").textContent=sp.n;
+  $("fmSeason").innerHTML=(on?'<span style="color:var(--grn)">\u25CF IN SEASON NOW</span>':'<span style="color:var(--red)">\u25CB OUT OF SEASON</span>')+' \u00b7 '+sp.seasonTxt;
+  $("fmBody").innerHTML=
+    '<div class="fmSec"><h4>REGULATIONS (VERIFY BEFORE KEEPING)</h4><div class="fmReg">'+
+      '<div class="rg"><span>MIN SIZE</span><b>'+sp.size+'</b></div>'+
+      '<div class="rg"><span>BAG LIMIT</span><b>'+sp.bag+'</b></div>'+
+      '<div class="rg"><span>OPEN MONTHS</span><b>'+sp.months.map(x=>monthName[x]).join(" ")+'</b></div>'+
+    '</div></div>'+
+    '<div class="fmSec"><h4>WHERE TO FIND</h4><p>'+sp.where+'</p></div>'+
+    '<div class="fmSec"><h4>BEST BAITS</h4><p>'+sp.bait+'</p></div>'+
+    '<div class="fmSec"><h4>BEST TIMES</h4><p>'+sp.best+'</p></div>'+
+    '<div class="fmSec"><h4>HABITS</h4><p>'+sp.habits+'</p></div>'+
+    '<div class="fmSec"><h4>NOTES</h4><p>'+sp.notes+'</p></div>'+
+    '<div class="fmSec"><h4>IDENTIFICATION</h4><div id="fmPhoto"><div class="load">loading photo…</div></div></div>'+
+    '<div class="fmSec"><p style="color:var(--dim);font-size:10px">Regulations are approximate and change often. Confirm current FL / federal rules at myfwc.com before harvesting.</p></div>';
+  loadFishPhoto(sp.wiki);
+  $("fishModal").classList.add("open");
+}
+const _wikiCache={};
+async function loadFishPhoto(title){
+  const box=$("fmPhoto");if(!box||!title)return;
+  try{
+    let data=_wikiCache[title];
+    if(!data){
+      const r=await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(title));
+      if(!r.ok)throw 0;data=await r.json();_wikiCache[title]=data;
+    }
+    const img=(data.thumbnail&&data.thumbnail.source)||(data.originalimage&&data.originalimage.source);
+    if(!img){box.innerHTML='<div class="cred">No public photo found for '+title+'.</div>';return;}
+    box.innerHTML='<img src="'+img+'" alt="'+title+'"><div class="cred">Photo: Wikipedia — “'+title+'” · CC/public domain. Tap opens source.</div>';
+    const im=box.querySelector("img");
+    if(im&&data.content_urls&&data.content_urls.desktop)im.onclick=()=>window.open(data.content_urls.desktop.page,"_blank");
+  }catch(e){box.innerHTML='<div class="cred">Photo unavailable.</div>';}
+}
+$("specList").addEventListener("click",e=>{
+  const row=e.target.closest?e.target.closest(".spec"):null;
+  if(row&&row.dataset.k)openFish(row.dataset.k);
+});
+$("fmClose").onclick=()=>$("fishModal").classList.remove("open");
+$("fishModal").addEventListener("click",e=>{if(e.target.id==="fishModal")$("fishModal").classList.remove("open");});
+renderTargets();
 async function loadFish(){
   try{
     const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${HOME[0]}&longitude=${HOME[1]}`+
