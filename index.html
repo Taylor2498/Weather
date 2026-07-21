@@ -146,7 +146,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v2.2</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v2.4</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -201,6 +201,35 @@ nav button:active{transform:scale(.93)}
     </div>
   </div>
 
+  <!-- FISH -->
+  <div class="view" id="view-fish">
+    <div class="card">
+      <div class="c-hd"><h2>FISHABILITY — TODAY</h2><span class="st" id="fishSt">—</span></div>
+      <div class="c-bd"><div class="now" id="fishScore"></div></div>
+    </div>
+    <div class="card">
+      <div class="c-hd"><h2>BITE WINDOWS</h2><span class="st">TIDE + LIGHT DRIVEN</span></div>
+      <div class="c-bd"><table id="biteTbl"></table></div>
+    </div>
+    <div class="card">
+      <div class="c-hd"><h2>CONDITIONS FOR FISHING</h2></div>
+      <div class="c-bd"><table id="fishCond"></table></div>
+    </div>
+    <div class="card">
+      <div class="c-hd"><h2>JULY TARGETS — PENSACOLA / GULF BREEZE</h2><span class="st">SEASONAL</span></div>
+      <div class="c-bd"><table id="specTbl">
+        <tr><th>SPECIES</th><th>WHERE</th><th>NOTES</th></tr>
+        <tr><td><b>RED SNAPPER</b></td><td>Reefs/wrecks 60-120ft</td><td class="cg">Season open — live cigar minnows</td></tr>
+        <tr><td><b>KING MACKEREL</b></td><td>Nearshore, passes</td><td>Slow-troll dusters at dawn</td></tr>
+        <tr><td><b>SPECKLED TROUT</b></td><td>Grass flats 2-5ft</td><td>Topwater first light, soft plastics after</td></tr>
+        <tr><td><b>REDFISH</b></td><td>Sound, dock lights</td><td>Night bite strong in heat</td></tr>
+        <tr><td><b>TARPON</b></td><td>Beach, passes</td><td>Migrating schools — crab flies/swimbaits</td></tr>
+        <tr><td><b>MANGROVE SNAPPER</b></td><td>Bridges, structure</td><td>Light leader, live shrimp</td></tr>
+        <tr><td><b>SPANISH MACKEREL</b></td><td>Beach, bay mouth</td><td>Straw rigs, fast retrieve</td></tr>
+      </table></div>
+    </div>
+  </div>
+
   <!-- SETTINGS -->
   <div class="view" id="view-set">
     <div class="card">
@@ -210,7 +239,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v2.2<br>
+        ORIOLE BEACH TACTICAL WEATHER v2.4<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -225,6 +254,7 @@ nav button:active{transform:scale(.93)}
   <button data-v="marine"><svg viewBox="0 0 24 24"><path d="M2 12c2.5-3 5-3 7.5 0s5 3 7.5 0 3.5-2 5 0M2 18c2.5-3 5-3 7.5 0s5 3 7.5 0 3.5-2 5 0"/></svg>MARINE</button>
   <button data-v="tides"><svg viewBox="0 0 24 24"><path d="M4 18V8M4 8l-2.2 2.6M4 8l2.2 2.6M11 6v10M11 16l-2.2-2.6M11 16l2.2-2.6M18 18V8M18 8l-2.2 2.6M18 8l2.2 2.6"/></svg>TIDES</button>
   <button data-v="fc"><svg viewBox="0 0 24 24"><path d="M7 17a5 5 0 1 1 1.2-9.9A6 6 0 0 1 19.5 9 4 4 0 0 1 18 17z"/></svg>FCST</button>
+  <button data-v="fish"><svg viewBox="0 0 24 24"><path d="M2 12c4-5 9-6 13-3 2-1.5 4-2 7-2-1 2-1 3-1 5s0 3 1 5c-3 0-5-.5-7-2-4 3-9 2-13-3z"/><circle cx="15.5" cy="11" r=".8" fill="currentColor"/></svg>FISH</button>
   <button data-v="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>MORE</button>
 </nav>
 
@@ -248,6 +278,13 @@ setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTi
 /* ================= MAP ================= */
 const map=L.map("map",{zoomControl:true}).setView([30.05,-87.15],8);
 map.createPane("radarPane");   map.getPane("radarPane").style.zIndex=350;   // above ALL basemaps
+/* smooth the radar as you zoom in (native ~1km data gets soft blobs instead of pixels) */
+function radarSmooth(){
+  const z=map.getZoom();
+  const px=Math.max(0,Math.min(6,(z-9)*1.5));
+  map.getPane("radarPane").style.filter=px>0?`blur(${px}px) saturate(1.05)`:"none";
+}
+map.on("zoomend",radarSmooth);setTimeout(radarSmooth,300);
 map.createPane("alertPane");   map.getPane("alertPane").style.zIndex=390;
 
 const baseDark=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -438,6 +475,7 @@ async function loadTides(){
       jget(base+"&product=water_level&date=latest").catch(()=>null)
     ]);
     tideCache=[pred.predictions,hilo.predictions,obs?.data?.[0]];
+    hiloCache=hilo.predictions;
     drawTide(...tideCache);
     stamp("tideSt");
   }catch(e){$("tideMeta").innerHTML=`<span class="err">tide feed unavailable — retrying</span>`;}
@@ -605,15 +643,87 @@ async function loadStorms(){
   }catch(e){}
 }
 
+let hiloCache=null;
+/* ---- moon phase (compact) ---- */
+function moonPhase(d){
+  const syn=29.530588853, ref=new Date(Date.UTC(2000,0,6,18,14));
+  let age=((d-ref)/86400000)%syn; if(age<0)age+=syn;
+  const ill=Math.round((1-Math.cos(2*Math.PI*age/syn))/2*100);
+  const names=["NEW","WAXING CRESCENT","FIRST QUARTER","WAXING GIBBOUS","FULL","WANING GIBBOUS","LAST QUARTER","WANING CRESCENT"];
+  return{age,ill,name:names[Math.floor(((age+syn/16)%syn)/(syn/8))]};
+}
+async function loadFish(){
+  try{
+    const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${HOME[0]}&longitude=${HOME[1]}`+
+      `&daily=sunrise,sunset&hourly=pressure_msl,wind_speed_10m&past_hours=12&forecast_hours=6&wind_speed_unit=kn&timezone=auto`);
+    const m=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=30.30&longitude=-87.15`+
+      `&current=wave_height,sea_surface_temperature&timezone=auto`).catch(()=>null);
+    const pr=d.hourly.pressure_msl, prNow=pr[pr.length-1], pr6=pr[pr.length-7]||prNow;
+    const trend=prNow-pr6;
+    const trendTxt=trend<-1?"FALLING FAST":trend<-0.3?"FALLING":trend>1?"RISING FAST":trend>0.3?"RISING":"STEADY";
+    const wind=d.hourly.wind_speed_10m[d.hourly.wind_speed_10m.length-1];
+    const seas=m?ft(m.current.wave_height):null;
+    const sst=m&&m.current.sea_surface_temperature!=null?m.current.sea_surface_temperature*9/5+32:null;
+    const mp=moonPhase(new Date());
+    const sr=new Date(d.daily.sunrise[0]), ss=new Date(d.daily.sunset[0]);
+    const tf=t=>t.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+
+    /* scoring */
+    const sc={};
+    sc.wind = wind<=10?2:wind<=17?1:0;
+    sc.seas = seas==null?1:seas<=2.5?2:seas<=4.5?1:0;
+    sc.pres = trend<-0.3?2:Math.abs(trend)<=0.3?1.5:trend<1?1:0.5;
+    sc.moon = (mp.ill>=85||mp.ill<=15)?2:1;
+    const tot=sc.wind+sc.seas+sc.pres+sc.moon;
+    const grade=tot>=7?["FIRE","g"]:tot>=5.5?["GOOD","g"]:tot>=4?["FAIR","a"]:["TOUGH","a"];
+    const chip=(v,max)=>v>=max?"g":v>=max/2?"c":"a";
+    $("fishScore").innerHTML=`
+      <div class="nw" style="grid-column:span 3"><div class="k">OVERALL</div>
+        <div class="v"><span class="${grade[1]}" style="color:${grade[1]=="g"?"var(--grn)":"var(--amb)"}">${grade[0]}</span> <small>${tot.toFixed(1)}/8</small></div>
+        <div class="s">WIND + SEAS + PRESSURE + MOON</div></div>
+      <div class="nw"><div class="k">WIND</div><div class="v">${Math.round(wind)}<small>KT</small></div><div class="s ${chip(sc.wind,2)}">${sc.wind>=2?"CALM ✓":sc.wind>=1?"WORKABLE":"BLOWN OUT"}</div></div>
+      <div class="nw"><div class="k">SEAS</div><div class="v">${seas!=null?fmt(seas):"—"}<small>FT</small></div><div class="s ${chip(sc.seas,2)}">${sc.seas>=2?"FLAT ✓":sc.seas>=1?"BUMPY":"SNOTTY"}</div></div>
+      <div class="nw"><div class="k">PRESSURE</div><div class="v" style="font-size:15px">${trendTxt}</div><div class="s">${fmt(trend,1)} MB / 6H</div></div>`;
+
+    /* bite windows: tide changes ±1.5h + dawn/dusk */
+    let rows="<tr><th>WINDOW</th><th>DRIVER</th><th class='r'>QUALITY</th></tr>";
+    const win=[];
+    win.push({t:new Date(sr.getTime()-30*60000),label:tf(new Date(sr.getTime()-45*60000))+" – "+tf(new Date(sr.getTime()+75*60000)),drv:"DAWN / FIRST LIGHT",q:"PRIME"});
+    if(hiloCache)hiloCache.forEach(p=>{
+      const tt=new Date(p.t.replace(" ","T"));
+      const hi=+p.v>1.0;
+      win.push({t:tt,label:tf(new Date(tt.getTime()-90*60000))+" – "+tf(new Date(tt.getTime()+90*60000)),
+        drv:(hi?"HIGH":"LOW")+" TIDE TURN "+tf(tt),q:"MOVING WATER"});
+    });
+    win.push({t:new Date(ss.getTime()-30*60000),label:tf(new Date(ss.getTime()-75*60000))+" – "+tf(new Date(ss.getTime()+45*60000)),drv:"DUSK",q:"PRIME"});
+    win.sort((a,b)=>a.t-b.t);
+    const now=new Date();
+    win.forEach(w=>{
+      const live=Math.abs(w.t-now)<95*60000;
+      rows+=`<tr><td><b>${w.label}</b>${live?' <span class="pp-src obs">NOW</span>':""}</td><td>${w.drv}</td><td class="r ${w.q=="PRIME"?"cg":"cc"}">${w.q}</td></tr>`;
+    });
+    $("biteTbl").innerHTML=rows;
+
+    $("fishCond").innerHTML=`
+      <tr><th>FACTOR</th><th class="r">VALUE</th><th class="r">READ</th></tr>
+      <tr><td>WATER TEMP (NEARSHORE)</td><td class="r cc"><b>${sst!=null?Math.round(sst)+"°F":"—"}</b></td><td class="r">${sst>=84?"HOT — FISH DEEP/EARLY":sst>=75?"ACTIVE RANGE":"COOL"}</td></tr>
+      <tr><td>MOON</td><td class="r"><b>${mp.name}</b></td><td class="r">${mp.ill}% LIT</td></tr>
+      <tr><td>SUNRISE / SUNSET</td><td class="r">${tf(sr)} / ${tf(ss)}</td><td class="r cg">PLAN AROUND IT</td></tr>
+      <tr><td>BAROMETER</td><td class="r"><b>${fmt(prNow,1)} MB</b></td><td class="r ${trend<-0.3?"cg":""}">${trend<-0.3?"FALLING = FEEDING":trendTxt}</td></tr>
+      <tr><td>SEAS (NEARSHORE MODEL)</td><td class="r">${seas!=null?fmt(seas)+" FT":"—"}</td><td class="r">${seas!=null&&seas<3?"SMALL BOAT OK":"CHECK PASS CONDITIONS"}</td></tr>`;
+    stamp("fishSt");
+  }catch(e){$("fishScore").innerHTML=`<div class="err">fishing data unavailable — retrying</div>`;}
+}
 /* ================= BOOT ================= */
 buildRadar(); setInterval(buildRadar,300000);
-loadNow(); loadForecast(); loadTides(); loadBuoys(); loadSwell(); loadStorms(); loadAlertPolys();
+loadNow(); loadForecast(); loadTides().then(loadFish); loadBuoys(); loadSwell(); loadStorms(); loadAlertPolys();
 setInterval(loadNow,600000);
 setInterval(loadForecast,600000);
 setInterval(loadTides,900000);
 setInterval(()=>{loadBuoys();loadSwell();},1200000);
 setInterval(loadStorms,1800000);
 setInterval(loadAlertPolys,600000);
+setInterval(loadFish,1200000);
 addEventListener("resize",()=>{if(tideCache)drawTide(...tideCache);map.invalidateSize();});
 </script>
 </body>
