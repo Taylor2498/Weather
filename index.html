@@ -146,7 +146,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v2.2</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -210,7 +210,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v2.0<br>
+        ORIOLE BEACH TACTICAL WEATHER v2.2<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -327,8 +327,9 @@ BANDS.forEach(bd=>{
 
 /* ================= SETTINGS ================= */
 const S={
-  radar:{label:"RADAR LOOP",desc:"NEXRAD composite, last 50 min",dflt:true,
-    apply(v){if(!v)radarLayers.forEach(l=>l.setOpacity(0));$("radarBtn").classList.toggle("on",v);
+  radar:{label:"RADAR LOOP",desc:"Live composite, last ~50 min",dflt:true,
+    apply(v){radarLayers.forEach(l=>{if(v){l.addTo(map);}else{l.setOpacity(0);map.removeLayer(l);}});
+      $("radarBtn").classList.toggle("on",v);
       $("radar-stamp").style.display=v?"block":"none";}},
   sat:{label:"SATELLITE BASEMAP",desc:"Esri imagery vs dark map",dflt:false,
     apply(v){if(v){map.removeLayer(baseDark);baseSat.addTo(map);}else{map.removeLayer(baseSat);baseDark.addTo(map);}
@@ -597,6 +598,7 @@ async function loadStorms(){
 }
 
 /* ================= BOOT ================= */
+buildRadar(); setInterval(buildRadar,300000);
 loadNow(); loadForecast(); loadTides(); loadBuoys(); loadSwell(); loadStorms(); loadAlertPolys();
 setInterval(loadNow,600000);
 setInterval(loadForecast,600000);
