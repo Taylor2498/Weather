@@ -129,6 +129,15 @@ tr:last-child td{border-bottom:none}
 .hr .tv{font-family:var(--disp);font-size:16px;color:var(--bright);margin:3px 0;font-weight:700}
 .hr .pp{font-size:9px;color:var(--cyn)}
 .hr .wd{font-size:8.5px;color:var(--dim);margin-top:2px}
+.hr .em{font-size:16px;line-height:1;margin-top:2px}
+.wk .wr{display:grid;grid-template-columns:34px 24px 1fr auto 40px;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line)}
+.wk .wr:last-child{border-bottom:0}
+.wk .wd2{font-family:var(--disp);font-size:11px;color:var(--bright);font-weight:700}
+.wk .we{font-size:15px;text-align:center;line-height:1}
+.wk .ws{font-size:9.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wk .wt{font-family:var(--disp);font-size:12px;color:var(--bright);font-weight:700;white-space:nowrap}
+.wk .wt small{color:var(--dim);font-weight:400}
+.wk .wp{font-size:9px;color:var(--cyn);text-align:right}
 .err{color:var(--red);font-size:10px}
 /* ---------- map floating controls ---------- */
 .fab{position:absolute;z-index:1000;background:rgba(8,14,25,.95);
@@ -219,7 +228,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v3.8</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.9</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -286,12 +295,16 @@ nav button:active{transform:scale(.93)}
   <!-- FORECAST -->
   <div class="view" id="view-fc">
     <div class="card">
-      <div class="c-hd"><h2>CURRENT — ORIOLE BEACH</h2><span class="st" id="nowSt">—</span></div>
+      <div class="c-hd"><h2 id="nowTitle">CURRENT — ORIOLE BEACH</h2><span class="st" id="nowSt">—</span></div>
       <div class="c-bd"><div class="now" id="nowGrid"></div></div>
     </div>
     <div class="card">
-      <div class="c-hd"><h2>NEXT 12 HOURS — NWS MOBILE</h2><span class="st" id="fcSt">—</span></div>
+      <div class="c-hd"><h2 id="fcTitle">NEXT 12 HOURS — NWS MOBILE</h2><span class="st" id="fcSt">—</span></div>
       <div class="c-bd"><div class="hours" id="hours"></div></div>
+    </div>
+    <div class="card">
+      <div class="c-hd"><h2 id="wkTitle">7-DAY OUTLOOK — NWS</h2><span class="st" id="wkSt">—</span></div>
+      <div class="c-bd"><div class="wk" id="week"></div></div>
     </div>
   </div>
 
@@ -363,7 +376,8 @@ nav button:active{transform:scale(.93)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 "use strict";
-const HOME=[30.372,-87.088];
+const HOME=[30.372,-87.088];          /* data fallback only */
+let LOC=HOME.slice();                 /* live forecast anchor — follows GPS fix (v3.9) */
 const $=id=>document.getElementById(id);
 const ft=m=>m*3.28084;
 const dirTxt=d=>["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d/22.5)%16];
@@ -499,6 +513,11 @@ function locate(pan){
     }else{meMarker.setLatLng(ll);meCircle.setLatLng(ll).setRadius(pos.coords.accuracy||50);}
     if(pan)map.setView(ll,Math.max(map.getZoom(),11));
     drawRings(ll[0],ll[1]);
+    /* v3.9 — forecast follows the fix: retarget when moved >0.03° from current anchor */
+    if(Math.abs(ll[0]-LOC[0])>0.03||Math.abs(ll[1]-LOC[1])>0.03){
+      LOC=[ll[0],ll[1]];
+      safe(loadNow);safe(loadForecast);
+    }
   },()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:120000});
 }
 
@@ -619,9 +638,27 @@ async function jget(u){const r=await fetch(u);if(!r.ok)throw new Error(r.status)
 async function tget(u){const r=await fetch(u);if(!r.ok)throw new Error(r.status);return r.text();}
 const stamp=el=>$(el).textContent="UPD "+new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
 
+/* v3.9 — NWS shortForecast → emblem. Order matters: tropical > thunder > chance > rain > fog > wind > clouds > clear */
+function wxEmoji(sf,day){
+  const s=(sf||"").toLowerCase();
+  if(/hurricane|tropical/.test(s))return"🌀";
+  if(/thunder|t-?storm|tstm/.test(s))return"⛈";
+  if(/(chance|slight|likely|isolated|scattered).*(rain|shower|drizzle)|(rain|shower|drizzle).*(chance|likely)/.test(s))return"🌦";
+  if(/rain|shower|drizzle|sprinkle/.test(s))return"🌧";
+  if(/fog|mist|haze|smoke/.test(s))return"🌫";
+  if(/windy|breezy|blustery|gale/.test(s))return"💨";
+  if(/mostly sunny|mostly clear/.test(s))return day?"🌤":"🌙";
+  if(/mostly cloudy/.test(s))return"🌥";
+  if(/partly/.test(s))return day?"⛅":"☁️";
+  if(/cloudy|overcast/.test(s))return"☁️";
+  if(/sunny|clear|fair/.test(s))return day?"☀️":"🌙";
+  return day?"🌤":"🌙";
+}
+const dayAbbr=t=>new Date(t).toLocaleDateString("en-US",{weekday:"short"}).toUpperCase();
+
 async function loadNow(){
   try{
-    const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${HOME[0]}&longitude=${HOME[1]}`+
+    const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${LOC[0]}&longitude=${LOC[1]}`+
       `&current=temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation`+
       `&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto`);
     const c=d.current;
@@ -636,13 +673,43 @@ async function loadNow(){
   }catch(e){$("nowGrid").innerHTML=`<div class="err">conditions feed unavailable — retrying</div>`;}
 }
 
+function pairDaily(per){
+  /* pair NWS day/night periods into rows; handles a leading "Tonight" (night-only first row) */
+  const rows=[];let i=0;
+  const pop=x=>x.probabilityOfPrecipitation?.value??0;
+  if(per.length&&!per[0].isDaytime){
+    const n=per[0];
+    rows.push({day:dayAbbr(n.startTime),em:wxEmoji(n.shortForecast,false),sf:n.shortForecast,hi:null,lo:n.temperature,pop:pop(n)});
+    i=1;
+  }
+  for(;i+1<per.length;i+=2){
+    const d=per[i],n=per[i+1];
+    rows.push({day:dayAbbr(d.startTime),em:wxEmoji(d.shortForecast,true),sf:d.shortForecast,hi:d.temperature,lo:n.temperature,pop:Math.max(pop(d),pop(n))});
+  }
+  if(i<per.length){
+    const x=per[i];
+    rows.push({day:dayAbbr(x.startTime),em:wxEmoji(x.shortForecast,x.isDaytime),sf:x.shortForecast,
+      hi:x.isDaytime?x.temperature:null,lo:x.isDaytime?null:x.temperature,pop:pop(x)});
+  }
+  return rows.slice(0,7);
+}
+
 async function loadForecast(){
+  let p=null;
   try{
-    const p=await jget(`https://api.weather.gov/points/${HOME[0]},${HOME[1]}`);
+    p=await jget(`https://api.weather.gov/points/${LOC[0]},${LOC[1]}`);
+    const rl=p.properties.relativeLocation?.properties;
+    if(rl&&rl.city){
+      const place=(rl.city+", "+rl.state).toUpperCase();
+      $("nowTitle").textContent="CURRENT — "+place;
+      $("fcTitle").textContent="NEXT 12 HOURS — "+place;
+      $("wkTitle").textContent="7-DAY OUTLOOK — "+place;
+    }
     const h=await jget(p.properties.forecastHourly);
     $("hours").innerHTML=h.properties.periods.slice(0,12).map(x=>`
       <div class="hr">
         <div class="t">${new Date(x.startTime).toLocaleTimeString("en-US",{hour:"numeric"})}</div>
+        <div class="em">${wxEmoji(x.shortForecast,x.isDaytime)}</div>
         <div class="tv">${x.temperature}°</div>
         <div class="pp">${x.probabilityOfPrecipitation?.value??0}%</div>
         <div class="wd">${x.windSpeed.replace(" mph","M")} ${x.windDirection}</div>
@@ -650,7 +717,21 @@ async function loadForecast(){
     stamp("fcSt");
   }catch(e){$("hours").innerHTML=`<div class="err">NWS forecast unavailable — retrying</div>`;}
   try{
-    const a=await jget(`https://api.weather.gov/alerts/active?point=${HOME[0]},${HOME[1]}`);
+    if(p){
+      const f=await jget(p.properties.forecast);
+      $("week").innerHTML=pairDaily(f.properties.periods).map(r=>`
+        <div class="wr">
+          <div class="wd2">${r.day}</div>
+          <div class="we">${r.em}</div>
+          <div class="ws">${r.sf}</div>
+          <div class="wt">${r.hi!=null?r.hi+"°":"—"}<small> / ${r.lo!=null?r.lo+"°":"—"}</small></div>
+          <div class="wp">${r.pop}%</div>
+        </div>`).join("");
+      stamp("wkSt");
+    }
+  }catch(e){$("week").innerHTML=`<div class="err">7-day outlook unavailable — retrying</div>`;}
+  try{
+    const a=await jget(`https://api.weather.gov/alerts/active?point=${LOC[0]},${LOC[1]}`);
     const feats=a.features||[];
     if(feats.length){
       const worst=feats.some(f=>/warning/i.test(f.properties.event));
