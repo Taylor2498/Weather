@@ -70,6 +70,16 @@ td{padding:7px 6px;border-bottom:1px solid #101c30}
 td.r,th.r{text-align:right}
 td b{color:var(--bright)} .cg{color:var(--grn)} .cc{color:var(--cyn)} .ca{color:var(--amb)}
 tr:last-child td{border-bottom:none}
+.btn2{background:var(--card2);border:1px solid var(--line2);color:var(--cyn);font-family:var(--mono);
+  font-size:9px;letter-spacing:1px;padding:4px 9px;border-radius:8px;cursor:pointer}
+.btn2:active{transform:scale(.95)}
+.btn2.warn{color:var(--red);border-color:#5a1616}
+#camBox img{width:100%;border-radius:10px;border:1px solid var(--line);display:block;margin-top:8px}
+#camNote{font-size:9px;color:var(--dim);margin-top:6px;letter-spacing:.5px}
+.addrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.addrow select,.addrow input{background:var(--card2);border:1px solid var(--line2);color:var(--txt);
+  font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:10px;flex:1;min-width:90px}
+.addrow input::placeholder{color:#3d5878}
 .hours{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .hr{min-width:66px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:9px 6px;text-align:center;flex-shrink:0}
 .hr .t{font-size:9px;color:var(--dim)}
@@ -96,7 +106,8 @@ tr:last-child td{border-bottom:none}
 #tlDots{flex:1;display:flex;gap:5px}
 .tld{flex:1;height:6px;border-radius:3px;background:#1a2c4a;cursor:pointer;transition:background .15s}
 .tld.on{background:var(--grn)}
-.tld.fc{border:1px dashed #2c4a7a}
+.tld.fc{border:1px dashed #4a5a2c;background:#2a2410}
+.tld.fc.on{background:var(--amb)}
 #tlTime{font-size:10px;color:var(--cyn);letter-spacing:1px;min-width:46px;text-align:right}
 #storm-chip{position:absolute;right:12px;top:12px;z-index:1000;background:rgba(42,10,10,.9);
   border:1px solid #5a1616;border-radius:999px;color:var(--red);padding:7px 12px;font-size:10px;letter-spacing:1px;display:none}
@@ -160,7 +171,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v3.2</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.4</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -185,7 +196,26 @@ nav button:active{transform:scale(.93)}
   <div class="view" id="view-marine">
     <div class="card">
       <div class="c-hd"><h2>BUOY NETWORK</h2><span class="st" id="buoySt">—</span></div>
-      <div class="c-bd" style="overflow-x:auto"><table id="buoyTbl"></table></div>
+      <div class="c-bd" style="overflow-x:auto"><table id="buoyTbl"></table>
+        <div id="camBox" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+            <span id="camTitle" style="color:var(--cyn);font-size:10px;letter-spacing:1.5px">BUOYCAM</span>
+            <button class="btn2" id="camClose">CLOSE</button>
+          </div>
+          <img id="camImg" alt="buoy camera">
+          <div id="camNote">LIVE IMAGE FROM THE BUOY MAST CAMERA - NOAA BUOYCAM</div>
+        </div>
+        <div class="addrow">
+          <select id="addBuoySel"><option value="">+ ADD BUOY FROM DIRECTORY</option></select>
+          <button class="btn2" id="addBuoyBtn">ADD</button>
+        </div>
+        <div class="addrow">
+          <input id="cId" placeholder="CUSTOM NDBC ID" maxlength="6">
+          <input id="cLat" placeholder="LAT" inputmode="decimal">
+          <input id="cLon" placeholder="LON" inputmode="decimal">
+          <button class="btn2" id="addCustomBtn">ADD</button>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="c-hd"><h2>SWELL DECOMPOSITION — NEARSHORE</h2><span class="st" id="swellSt">—</span></div>
@@ -254,7 +284,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v3.2<br>
+        ORIOLE BEACH TACTICAL WEATHER v3.4<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -337,7 +367,9 @@ async function buildRadar(){
   const mk=(f,tag)=>({host:j.host,path:f.path,fc:!!tag,label:(tag||"")+new Date(f.time*1000)
     .toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"})});
   const frames=(j.radar.past||[]).slice(-7).map(f=>mk(f));
-  if(j.radar.nowcast&&j.radar.nowcast[0])frames.push(mk(j.radar.nowcast[0],"+"));
+  (j.radar.nowcast||[]).slice(0,3).forEach((f,i)=>{
+    const fr=mk(f,"+");fr.label="+"+((i+1)*10)+"M";frames.push(fr);
+  });
   const keep=new Set(frames.map(f=>f.path));
   rvLayers.forEach((ly,p)=>{if(!keep.has(p)){if(map.hasLayer(ly))map.removeLayer(ly);rvLayers.delete(p);}});
   const atLatest=!rvFrames.length||curF>=rvFrames.length-2;
@@ -356,9 +388,12 @@ async function buildRadar(){
     }
   }catch(e){}
 }
+let holdTicks=0;
 setInterval(()=>{
   if(!playing||interacting||rvFrames.length<2||S.radar?.val===false)return;
+  if(holdTicks>0){holdTicks--;return;}
   showFrame(curF+1);
+  if(curF===rvFrames.length-1)holdTicks=2;   // pause on final forecast frame, then reset
 },750);
 map.on("zoomstart",()=>interacting=true);
 map.on("movestart",()=>interacting=true);
@@ -415,18 +450,36 @@ const homeIcon=L.divIcon({className:"",html:
 L.marker(HOME,{icon:homeIcon}).addTo(map).bindPopup(`<div class="pp-h">HOME · ORIOLE BEACH</div>30.372N 87.088W`);
 [25,50].forEach(nm=>L.circle(HOME,{radius:nm*1852,color:"#39ff6b",weight:1,opacity:.35,fill:false,dashArray:"3 6"}).addTo(gRings));
 
+const BUOY_DIR=[
+ {id:"42001",name:"MID GULF",lat:25.90,lon:-89.67},
+ {id:"42002",name:"WEST GULF",lat:26.06,lon:-93.65},
+ {id:"42003",name:"EAST GULF",lat:25.93,lon:-85.62},
+ {id:"42019",name:"FREEPORT TX",lat:27.91,lon:-95.35},
+ {id:"42020",name:"CORPUS CHRISTI",lat:26.97,lon:-96.69},
+ {id:"42035",name:"GALVESTON",lat:29.23,lon:-94.41},
+ {id:"42036",name:"WEST TAMPA",lat:28.50,lon:-84.52},
+ {id:"42055",name:"BAY OF CAMPECHE",lat:22.14,lon:-94.11},
+ {id:"DPIA1",name:"DAUPHIN ISLAND",lat:30.25,lon:-88.08},
+];
 const BUOYS=[
- {id:"42012",name:"ORANGE BEACH",lat:30.064,lon:-87.555},
- {id:"42039",name:"PENSACOLA S",lat:28.787,lon:-86.007},
- {id:"42040",name:"MOBILE S",lat:29.207,lon:-88.237},
+ {id:"42012",name:"ORANGE BEACH",lat:30.064,lon:-87.555,core:true},
+ {id:"42039",name:"PENSACOLA S",lat:28.787,lon:-86.007,core:true},
+ {id:"42040",name:"MOBILE S",lat:29.207,lon:-88.237,core:true},
 ];
 const buoyIcon=c=>L.divIcon({className:"",html:
  `<div style="width:14px;height:14px;border:2px solid ${c};transform:rotate(45deg);background:rgba(6,11,19,.6);border-radius:3px"></div>`,
  iconSize:[14,14],iconAnchor:[7,7]});
-BUOYS.forEach(b=>{
+function addBuoyMarker(b){
   b.marker=L.marker([b.lat,b.lon],{icon:buoyIcon("#ffe45c")}).addTo(gBuoys)
     .bindPopup(`<div class="pp-h">NDBC ${b.id} · ${b.name}</div>loading…`);
-});
+}
+function saveBuoys(){
+  try{localStorage.setItem("obwx:xbuoys",JSON.stringify(BUOYS.filter(b=>!b.core)
+    .map(b=>({id:b.id,name:b.name,lat:b.lat,lon:b.lon}))));}catch(e){}
+}
+try{JSON.parse(localStorage.getItem("obwx:xbuoys")||"[]").forEach(b=>{
+  if(!BUOYS.some(x=>x.id===b.id))BUOYS.push(b);});}catch(e){}
+BUOYS.forEach(addBuoyMarker);
 L.marker([30.404,-87.211],{icon:buoyIcon("#ff5cd0")}).addTo(gBuoys)
  .bindPopup(`<div class="pp-h">CO-OPS 8729840</div>PENSACOLA TIDE GAUGE`);
 
@@ -617,7 +670,7 @@ async function loadBuoys(){
   const wx=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
     `&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kn&timezone=auto`).catch(()=>null);
   const mArr=Array.isArray(marine)?marine:[marine], wArr=Array.isArray(wx)?wx:[wx];
-  let html=`<tr><th>STATION</th><th class="r">WAVES</th><th class="r">PERIOD</th><th class="r">WIND</th><th class="r">GUST</th><th class="r">PRES</th><th class="r">H₂O</th><th>SRC</th></tr>`;
+  let html=`<tr><th>STATION</th><th class="r">WAVES</th><th class="r">PERIOD</th><th class="r">WIND</th><th class="r">GUST</th><th class="r">PRES</th><th class="r">H₂O</th><th>SRC</th><th></th><th></th></tr>`;
   for(let i=0;i<BUOYS.length;i++){
     const b=BUOYS[i];
     let d={},src="MODEL";
@@ -634,7 +687,7 @@ async function loadBuoys(){
       <td class="r cc"><b>${fmt(d.wv)}FT</b></td><td class="r">${fmt(d.per,0)}S</td>
       <td class="r">${fmt(d.wind,0)}KT</td><td class="r ${d.gust>=25?"ca":""}">${fmt(d.gust,0)}KT</td>
       <td class="r">${fmt(d.pres,1)}</td><td class="r">${fmt(d.wtmp,0)}°F</td>
-      <td><span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></td></tr>`;
+      <td><span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></td><td><button class="btn2" data-cam="${b.id}">CAM</button></td><td>${b.core?"":`<button class="btn2 warn" data-del="${b.id}">X</button>`}</td></tr>`;
     b.marker.setPopupContent(`
       <div class="pp-h">NDBC ${b.id} · ${b.name} <span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></div>
       <div class="pp-row"><span>WAVES</span><b>${fmt(d.wv)} FT @ ${fmt(d.per,0)}S ${d.dir!=null?dirTxt(d.dir):""}</b></div>
@@ -645,6 +698,48 @@ async function loadBuoys(){
   $("buoyTbl").innerHTML=html;
   stamp("buoySt");
 }
+/* buoy cam viewer + row actions */
+function showCam(id){
+  $("camBox").style.display="block";
+  $("camTitle").textContent="BUOYCAM · "+id;
+  $("camNote").textContent="LIVE IMAGE FROM THE BUOY MAST CAMERA - NOAA BUOYCAM";
+  const img=$("camImg");
+  img.style.display="block";
+  img.onerror=()=>{img.style.display="none";
+    $("camNote").textContent="NO CAMERA AT "+id+" - NOT ALL BUOYS CARRY ONE. TRY 42012, 42039 OR 42040.";};
+  img.src="https://www.ndbc.noaa.gov/buoycam.php?station="+id+"&cb="+Date.now();
+}
+$("buoyTbl").addEventListener("click",e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.cam)showCam(t.dataset.cam);
+  if(t.dataset&&t.dataset.del){
+    const i=BUOYS.findIndex(b=>b.id===t.dataset.del);
+    if(i>=0){if(BUOYS[i].marker)gBuoys.removeLayer(BUOYS[i].marker);BUOYS.splice(i,1);saveBuoys();fillBuoySel();loadBuoys();}
+  }
+});
+$("camClose").onclick=()=>{$("camBox").style.display="none";};
+function fillBuoySel(){
+  const sel=$("addBuoySel");
+  sel.innerHTML="<option value=\"\">+ ADD BUOY FROM DIRECTORY</option>"+
+    BUOY_DIR.filter(d=>!BUOYS.some(b=>b.id===d.id))
+      .map(d=>`<option value="${d.id}">${d.id} - ${d.name}</option>`).join("");
+}
+function addBuoy(b){
+  if(BUOYS.some(x=>x.id===b.id))return;
+  BUOYS.push(b);addBuoyMarker(b);saveBuoys();fillBuoySel();loadBuoys();
+}
+$("addBuoyBtn").onclick=()=>{
+  const id=$("addBuoySel").value;if(!id)return;
+  const d=BUOY_DIR.find(x=>x.id===id);if(d)addBuoy({id:d.id,name:d.name,lat:d.lat,lon:d.lon});
+};
+$("addCustomBtn").onclick=()=>{
+  const id=($("cId").value||"").trim().toUpperCase();
+  const lat=parseFloat($("cLat").value),lon=parseFloat($("cLon").value);
+  if(!id||isNaN(lat)||isNaN(lon))return;
+  addBuoy({id:id,name:"CUSTOM",lat:lat,lon:lon});
+  $("cId").value=$("cLat").value=$("cLon").value="";
+};
+fillBuoySel();
 
 async function loadSwell(){
   try{
