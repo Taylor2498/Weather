@@ -160,7 +160,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v3.0</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.1</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -254,7 +254,7 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v3.0<br>
+        ORIOLE BEACH TACTICAL WEATHER v3.1<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
         RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
@@ -308,12 +308,12 @@ const baseSat=L.layerGroup([
 /* ===== RADAR ENGINE v3 — one global source, 2 mounted layers max, gesture-aware, scrub timeline ===== */
 let rvFrames=[],curF=0,playing=true,interacting=false,irLayer=null;
 const rvLayers=new Map();
-const RVOPTS={pane:"radarPane",opacity:0,maxNativeZoom:10,maxZoom:18,
+const RVOPTS={pane:"radarPane",opacity:0,tileSize:512,maxNativeZoom:7,maxZoom:18,
   updateWhenZooming:false,updateWhenIdle:true,keepBuffer:2};
 function frameLayer(i){
   const f=rvFrames[i];if(!f)return null;
   if(!rvLayers.has(f.path))
-    rvLayers.set(f.path,L.tileLayer(`${f.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,RVOPTS));
+    rvLayers.set(f.path,L.tileLayer(`${f.host}${f.path}/512/{z}/{x}/{y}/6/1_1.png`,RVOPTS));
   return rvLayers.get(f.path);
 }
 function showFrame(i){
@@ -350,8 +350,8 @@ async function buildRadar(){
     if(sat&&sat.length){
       const f=sat[sat.length-1];
       if(irLayer&&map.hasLayer(irLayer))map.removeLayer(irLayer);
-      irLayer=L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/0/0_0.png`,
-        {pane:"irPane",opacity:.32,maxNativeZoom:6,maxZoom:18,updateWhenZooming:false,updateWhenIdle:true,keepBuffer:2});
+      irLayer=L.tileLayer(`${j.host}${f.path}/512/{z}/{x}/{y}/0/0_0.png`,
+        {pane:"irPane",opacity:.32,tileSize:512,maxNativeZoom:6,maxZoom:18,updateWhenZooming:false,updateWhenIdle:true,keepBuffer:2});
       if(S.ir?.val!==false)irLayer.addTo(map);
     }
   }catch(e){}
