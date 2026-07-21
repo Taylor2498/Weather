@@ -264,6 +264,7 @@ const radarSuffix=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
 const radarLayers=radarSuffix.map(s=>
   L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
     {opacity:0,maxZoom:12,pane:"radarPane"}));
+radarLayers.forEach(l=>l.addTo(map));
 let rf=0;
 setInterval(()=>{
   if(!S.radar.val)return;
