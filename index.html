@@ -259,21 +259,36 @@ const baseSat=L.layerGroup([
     {maxZoom:18,opacity:.85})
 ]);
 
-/* radar loop — in radarPane so it draws OVER any basemap */
-const radarSuffix=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
-const radarLayers=radarSuffix.map(s=>
-  L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
-    {opacity:0,maxZoom:12,pane:"radarPane"}));
-radarLayers.forEach(l=>l.addTo(map));
-let rf=0;
+/* radar loop — RainViewer frames (reliable CDN) with IEM NEXRAD fallback; radarPane draws OVER any basemap */
+let radarLayers=[],radarTimes=[],rf=0;
+function setRadarFrames(defs){
+  radarLayers.forEach(l=>map.removeLayer(l));
+  radarLayers=defs.map(d=>L.tileLayer(d.url,{opacity:0,pane:"radarPane",maxZoom:12}));
+  radarTimes=defs.map(d=>d.label);
+  if(S.radar?.val!==false)radarLayers.forEach(l=>l.addTo(map));
+  rf=0;
+}
+async function buildRadar(){
+  try{
+    const j=await jget("https://api.rainviewer.com/public/weather-maps.json");
+    const frames=j.radar.past.slice(-6);
+    setRadarFrames(frames.map(f=>({
+      url:`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
+      label:new Date(f.time*1000).toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"})
+    })));
+  }catch(e){
+    const sfx=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
+    setRadarFrames(sfx.map((s,i)=>({
+      url:`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
+      label:s?`T−${50-i*10}M`:"LATEST"})));
+  }
+}
 setInterval(()=>{
-  if(!S.radar.val)return;
+  if(!S.radar.val||!radarLayers.length)return;
   radarLayers.forEach((l,i)=>l.setOpacity(i===rf?0.62:0));
-  const mins=[50,40,30,20,10,0][rf];
-  $("radar-stamp").textContent="NEXRAD · "+(mins?`T−${mins}M`:"LATEST");
+  $("radar-stamp").textContent="RADAR · "+(radarTimes[rf]||"—");
   rf=(rf+1)%radarLayers.length;
 },900);
-setInterval(()=>radarLayers.forEach(l=>l.redraw()),300000);
 
 /* feature groups (toggleable) */
 const gBuoys=L.layerGroup(), gSwell=L.layerGroup(), gRings=L.layerGroup(), alertLayer=L.layerGroup();
