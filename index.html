@@ -25,7 +25,7 @@
 html,body{background:var(--bg);color:var(--txt);font-family:var(--mono);font-size:12px;height:100%;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100dvh}
 /* ---------- header ---------- */
-header{background:rgba(6,11,19,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+header{background:rgba(6,11,19,.97);border-bottom:1px solid var(--line);
   padding:calc(8px + env(safe-area-inset-top)) 16px 9px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
 .brand{display:flex;align-items:center;gap:10px}
 .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:pl 2s infinite}
@@ -78,19 +78,29 @@ tr:last-child td{border-bottom:none}
 .hr .wd{font-size:8.5px;color:var(--dim);margin-top:2px}
 .err{color:var(--red);font-size:10px}
 /* ---------- map floating controls ---------- */
-.fab{position:absolute;z-index:1000;background:rgba(8,14,25,.88);backdrop-filter:blur(8px);
+.fab{position:absolute;z-index:1000;background:rgba(8,14,25,.95);
   border:1px solid var(--line2);color:var(--cyn);font-family:var(--mono);font-size:10px;
   letter-spacing:1px;padding:9px 13px;border-radius:999px;cursor:pointer;transition:transform .1s}
 .fab:active{transform:scale(.94)}
 .fab.on{color:var(--grn);border-color:#1d5a34}
 #radarBtn{left:12px;top:12px}
 #baseBtn{left:12px;top:56px}
-#radar-stamp{position:absolute;left:12px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:1000;
-  background:rgba(6,11,19,.8);border:1px solid var(--line);border-radius:8px;
-  padding:4px 10px;font-size:9px;color:var(--grn);letter-spacing:1px;pointer-events:none}
+#locBtn{left:12px;top:100px;font-size:12px;padding:8px 12px}
+.me-dot{width:14px;height:14px;border-radius:50%;background:#45d6ff;border:2.5px solid #fff;
+  box-shadow:0 0 0 0 rgba(69,214,255,.6);animation:mepulse 2.2s infinite}
+@keyframes mepulse{70%{box-shadow:0 0 0 14px rgba(69,214,255,0)}100%{box-shadow:0 0 0 0 rgba(69,214,255,0)}}
+#tl{position:absolute;left:12px;right:12px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:1000;
+  display:flex;align-items:center;gap:10px;background:rgba(8,14,25,.95);border:1px solid var(--line);
+  border-radius:999px;padding:7px 13px}
+#tlPlay{background:none;border:none;color:var(--cyn);font-size:13px;font-family:var(--mono);cursor:pointer;padding:0 2px;line-height:1}
+#tlDots{flex:1;display:flex;gap:5px}
+.tld{flex:1;height:6px;border-radius:3px;background:#1a2c4a;cursor:pointer;transition:background .15s}
+.tld.on{background:var(--grn)}
+.tld.fc{border:1px dashed #2c4a7a}
+#tlTime{font-size:10px;color:var(--cyn);letter-spacing:1px;min-width:46px;text-align:right}
 #storm-chip{position:absolute;right:12px;top:12px;z-index:1000;background:rgba(42,10,10,.9);
   border:1px solid #5a1616;border-radius:999px;color:var(--red);padding:7px 12px;font-size:10px;letter-spacing:1px;display:none}
-#legend{position:absolute;right:12px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:1000;display:none;
+#legend{position:absolute;right:12px;bottom:calc(134px + env(safe-area-inset-bottom));z-index:1000;display:none;
   background:rgba(6,11,19,.88);border:1px solid var(--line);border-radius:12px;padding:8px 11px;font-size:9px;max-width:210px}
 #legend .lg-h{color:var(--dim);letter-spacing:1.5px;margin-bottom:3px;font-size:8px}
 #legend .lg-r{display:flex;align-items:center;gap:6px;margin:2px 0;color:var(--txt)}
@@ -133,7 +143,7 @@ tr:last-child td{border-bottom:none}
 .about{font-size:9.5px;color:var(--dim);line-height:1.8;padding:14px}
 /* ---------- tab bar ---------- */
 nav{position:absolute;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:1500;
-  display:flex;background:rgba(10,17,30,.92);backdrop-filter:blur(16px);
+  display:flex;background:rgba(10,17,30,.97);
   border:1px solid var(--line);border-radius:24px;padding:7px;gap:4px}
 nav button{flex:1;background:none;border:none;color:var(--dim);font-family:var(--mono);
   font-size:8px;letter-spacing:1px;padding:7px 0 5px;border-radius:17px;cursor:pointer;transition:all .15s}
@@ -150,7 +160,7 @@ nav button:active{transform:scale(.93)}
     <div class="dot"></div>
     <div>
       <h1>ORIOLE BEACH <span>// WX</span></h1>
-      <small>30.37N 87.09W · GULF SENSOR NET · v2.7</small>
+      <small>30.37N 87.09W · GULF SENSOR NET · v3.0</small>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING…</span></div>
@@ -165,7 +175,8 @@ nav button:active{transform:scale(.93)}
     <div id="map"></div>
     <button class="fab on" id="radarBtn">◉ RADAR</button>
     <button class="fab" id="baseBtn">🌐 DARK</button>
-    <div id="radar-stamp">NEXRAD · —</div>
+    <button class="fab" id="locBtn" title="My location">⌖</button>
+    <div id="tl"><button id="tlPlay">⏸</button><div id="tlDots"></div><span id="tlTime">—</span></div>
     <div id="storm-chip"></div>
     <div id="legend"><div class="lg-h">ACTIVE ALERTS</div><div id="legendRows"></div></div>
   </div>
@@ -243,9 +254,9 @@ nav button:active{transform:scale(.93)}
     <div class="card">
       <div class="c-hd"><h2>ABOUT</h2></div>
       <div class="about">
-        ORIOLE BEACH TACTICAL WEATHER v2.7<br>
+        ORIOLE BEACH TACTICAL WEATHER v3.0<br>
         DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
-        AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
+        RADAR: GLOBAL COMPOSITE + IR CLOUD TOPS · SCRUB THE TIMELINE, TAP ⏸ TO FREEZE<br>AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN<br>
         NOT FOR NAVIGATION (OBVIOUSLY)
       </div>
     </div>
@@ -281,10 +292,9 @@ setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTi
 
 /* ================= MAP ================= */
 const map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([30.05,-87.15],8);
-map.createPane("radarPane");   map.getPane("radarPane").style.zIndex=350;   // above ALL basemaps
-/* radar rendering mode swaps by zoom: crisp NEXRAD regional, server-smoothed close-up (no CSS filters = no lag) */
-map.on("zoomend",()=>applyRadarMode&&applyRadarMode());
-map.createPane("alertPane");   map.getPane("alertPane").style.zIndex=390;
+map.createPane("irPane");     map.getPane("irPane").style.zIndex=340;    // global cloud tops
+map.createPane("radarPane");  map.getPane("radarPane").style.zIndex=350;  // above ALL basemaps
+map.createPane("alertPane");  map.getPane("alertPane").style.zIndex=390;
 
 const baseDark=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
   {attribution:"©OpenStreetMap ©CARTO",maxZoom:18});
@@ -295,46 +305,87 @@ const baseSat=L.layerGroup([
     {maxZoom:18,opacity:.85})
 ]);
 
-/* radar loop — dual-source: IEM NEXRAD (regional) / RainViewer smoothed (close zoom); radarPane draws OVER any basemap */
-let radarLayers=[],radarTimes=[],rf=0,iemDefs=null,rvDefs=null,radarMode="";
-const TILE_OPTS={opacity:0,pane:"radarPane",maxNativeZoom:12,maxZoom:18,updateWhenZooming:false,keepBuffer:1};
-function setRadarFrames(defs){
-  radarLayers.forEach(l=>map.removeLayer(l));
-  radarLayers=defs.map(d=>L.tileLayer(d.url,TILE_OPTS));
-  radarTimes=defs.map(d=>d.label);
-  if(S.radar?.val!==false)radarLayers.forEach(l=>l.addTo(map));
-  rf=0;
+/* ===== RADAR ENGINE v3 — one global source, 2 mounted layers max, gesture-aware, scrub timeline ===== */
+let rvFrames=[],curF=0,playing=true,interacting=false,irLayer=null;
+const rvLayers=new Map();
+const RVOPTS={pane:"radarPane",opacity:0,maxNativeZoom:10,maxZoom:18,
+  updateWhenZooming:false,updateWhenIdle:true,keepBuffer:2};
+function frameLayer(i){
+  const f=rvFrames[i];if(!f)return null;
+  if(!rvLayers.has(f.path))
+    rvLayers.set(f.path,L.tileLayer(`${f.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,RVOPTS));
+  return rvLayers.get(f.path);
 }
-function applyRadarMode(){
-  const want=(map.getZoom()>=10&&rvDefs)?"rv":"iem";
-  if(want===radarMode)return;
-  const defs=want==="rv"?rvDefs:iemDefs;
-  if(!defs)return;
-  radarMode=want;
-  setRadarFrames(defs);
+function showFrame(i){
+  if(!rvFrames.length||!S.radar.val)return;
+  curF=((i%rvFrames.length)+rvFrames.length)%rvFrames.length;
+  const cur=frameLayer(curF);
+  if(!map.hasLayer(cur))cur.addTo(map);
+  cur.setOpacity(0.72);
+  const nxtI=(curF+1)%rvFrames.length, nxt=frameLayer(nxtI);
+  if(nxt&&nxt!==cur){if(!map.hasLayer(nxt))nxt.addTo(map);nxt.setOpacity(0);}
+  /* keep DOM light: only current + next stay mounted */
+  rvFrames.forEach((f,idx)=>{
+    if(idx===curF||idx===nxtI)return;
+    const ly=rvLayers.get(f.path);
+    if(ly&&map.hasLayer(ly))map.removeLayer(ly);
+  });
+  updateTL();
 }
 async function buildRadar(){
-  const sfx=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
-  iemDefs=sfx.map((s,i)=>({
-    url:`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
-    label:s?`T−${50-i*10}M`:"LATEST"}));
+  const j=await jget("https://api.rainviewer.com/public/weather-maps.json");
+  const mk=(f,tag)=>({host:j.host,path:f.path,fc:!!tag,label:(tag||"")+new Date(f.time*1000)
+    .toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"})});
+  const frames=(j.radar.past||[]).slice(-7).map(f=>mk(f));
+  if(j.radar.nowcast&&j.radar.nowcast[0])frames.push(mk(j.radar.nowcast[0],"+"));
+  const keep=new Set(frames.map(f=>f.path));
+  rvLayers.forEach((ly,p)=>{if(!keep.has(p)){if(map.hasLayer(ly))map.removeLayer(ly);rvLayers.delete(p);}});
+  const atLatest=!rvFrames.length||curF>=rvFrames.length-2;
+  rvFrames=frames;
+  buildTL();
+  showFrame(atLatest?Math.max(0,rvFrames.length-2):Math.min(curF,rvFrames.length-1));
+  /* global IR satellite underlay (worldwide cloud tops) */
   try{
-    const j=await jget("https://api.rainviewer.com/public/weather-maps.json");
-    rvDefs=j.radar.past.slice(-6).map(f=>({
-      url:`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
-      label:new Date(f.time*1000).toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"})
-    }));
-  }catch(e){rvDefs=null;}
-  radarMode="";
-  applyRadarMode();
-  if(!radarMode){radarMode="iem";setRadarFrames(iemDefs);}
+    const sat=j.satellite&&j.satellite.infrared;
+    if(sat&&sat.length){
+      const f=sat[sat.length-1];
+      if(irLayer&&map.hasLayer(irLayer))map.removeLayer(irLayer);
+      irLayer=L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/0/0_0.png`,
+        {pane:"irPane",opacity:.32,maxNativeZoom:6,maxZoom:18,updateWhenZooming:false,updateWhenIdle:true,keepBuffer:2});
+      if(S.ir?.val!==false)irLayer.addTo(map);
+    }
+  }catch(e){}
 }
 setInterval(()=>{
-  if(!S.radar.val||!radarLayers.length)return;
-  radarLayers.forEach((l,i)=>l.setOpacity(i===rf?0.62:0));
-  $("radar-stamp").textContent="RADAR · "+(radarTimes[rf]||"—");
-  rf=(rf+1)%radarLayers.length;
-},900);
+  if(!playing||interacting||rvFrames.length<2||S.radar?.val===false)return;
+  showFrame(curF+1);
+},750);
+map.on("zoomstart",()=>interacting=true);
+map.on("movestart",()=>interacting=true);
+map.on("zoomend",()=>setTimeout(()=>interacting=false,250));
+map.on("moveend",()=>setTimeout(()=>interacting=false,250));
+/* timeline */
+function buildTL(){
+  const d=$("tlDots");d.innerHTML="";
+  rvFrames.forEach((f,i)=>{
+    const el=document.createElement("span");
+    el.className="tld"+(f.fc?" fc":"");
+    el.onclick=()=>{playing=false;$("tlPlay").textContent="▶";showFrame(i);};
+    d.appendChild(el);
+  });
+}
+function updateTL(){
+  const d=$("tlDots");
+  [...d.children].forEach((el,i)=>el.classList.toggle("on",i===curF));
+  $("tlTime").textContent=rvFrames[curF]?rvFrames[curF].label:"—";
+}
+$("tlPlay").onclick=()=>{playing=!playing;$("tlPlay").textContent=playing?"⏸":"▶";};
+function radarSetVisible(v){
+  $("radarBtn").classList.toggle("on",v);
+  $("tl").style.display=v?"flex":"none";
+  if(v)showFrame(curF);
+  else rvLayers.forEach(ly=>{if(map.hasLayer(ly))map.removeLayer(ly);});
+}
 
 /* feature groups (toggleable) */
 const gBuoys=L.layerGroup(), gSwell=L.layerGroup(), gRings=L.layerGroup(), alertLayer=L.layerGroup();
@@ -342,6 +393,21 @@ const gBuoys=L.layerGroup(), gSwell=L.layerGroup(), gRings=L.layerGroup(), alert
 const gTrack=L.layerGroup(), gCone=L.layerGroup(), gSpag=L.layerGroup(), gOutlook=L.layerGroup();
 const gHurr=L.layerGroup([gOutlook,gTrack]);
 let hurrLoaded=false;
+const gMe=L.layerGroup();
+let meMarker=null,meCircle=null;
+function locate(pan){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const ll=[pos.coords.latitude,pos.coords.longitude];
+    if(!meMarker){
+      meMarker=L.marker(ll,{icon:L.divIcon({className:"",html:'<div class="me-dot"></div>',
+        iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}).addTo(gMe);
+      meCircle=L.circle(ll,{radius:pos.coords.accuracy||50,color:"#45d6ff",weight:1,
+        opacity:.4,fillColor:"#45d6ff",fillOpacity:.08,interactive:false}).addTo(gMe);
+    }else{meMarker.setLatLng(ll);meCircle.setLatLng(ll).setRadius(pos.coords.accuracy||50);}
+    if(pan)map.setView(ll,Math.max(map.getZoom(),11));
+  },()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:120000});
+}
 
 const homeIcon=L.divIcon({className:"",html:
  `<div style="width:16px;height:16px;border:2px solid #45d6ff;background:rgba(69,214,255,.25);transform:rotate(45deg);border-radius:3px"></div>`,
@@ -377,10 +443,10 @@ BANDS.forEach(bd=>{
 
 /* ================= SETTINGS ================= */
 const S={
-  radar:{label:"RADAR LOOP",desc:"Live composite, last ~50 min",dflt:true,
-    apply(v){radarLayers.forEach(l=>{if(v){l.addTo(map);}else{l.setOpacity(0);map.removeLayer(l);}});
-      $("radarBtn").classList.toggle("on",v);
-      $("radar-stamp").style.display=v?"block":"none";}},
+  radar:{label:"RADAR LOOP",desc:"Worldwide composite + 10-min nowcast frame",dflt:true,
+    apply(v){radarSetVisible(v);}},
+  ir:{label:"GLOBAL IR SATELLITE",desc:"Cloud tops everywhere radar can't reach",dflt:true,sub:true,
+    apply(v){if(irLayer){v?irLayer.addTo(map):map.removeLayer(irLayer);}}},
   sat:{label:"SATELLITE BASEMAP",desc:"Esri imagery vs dark map",dflt:false,
     apply(v){if(v){map.removeLayer(baseDark);baseSat.addTo(map);}else{map.removeLayer(baseSat);baseDark.addTo(map);}
       $("baseBtn").textContent=v?"🌐 SAT":"🌐 DARK";}},
@@ -393,6 +459,8 @@ const S={
       $("legend").style.display=(v&&$("legendRows").innerHTML)?"block":"none";}},
   rings:{label:"RANGE RINGS",desc:"25 / 50 NM from home",dflt:true,
     apply(v){v?gRings.addTo(map):map.removeLayer(gRings);}},
+  me:{label:"MY LOCATION",desc:"Live position dot — stays on your device",dflt:true,
+    apply(v){if(v){gMe.addTo(map);locate(false);}else map.removeLayer(gMe);}},
   hurr:{label:"HURRICANE TRACKER",desc:"NHC storms, invests, outlook areas — auto-detects new systems",dflt:true,
     apply(v){if(v){gHurr.addTo(map);if(!hurrLoaded)loadHurricanes();}else map.removeLayer(gHurr);}},
   cone:{label:"FORECAST CONE",desc:"Official NHC cone of uncertainty",dflt:true,sub:true,
@@ -417,6 +485,7 @@ $("radarBtn").onclick=()=>{S.radar.val=!S.radar.val;store.set("radar",S.radar.va
   $("sw-radar").checked=S.radar.val;S.radar.apply(S.radar.val);};
 $("baseBtn").onclick=()=>{S.sat.val=!S.sat.val;store.set("sat",S.sat.val);
   $("sw-sat").checked=S.sat.val;S.sat.apply(S.sat.val);};
+$("locBtn").onclick=()=>locate(true);
 
 /* ================= TABS ================= */
 let tideCache=null;
@@ -823,6 +892,7 @@ async function loadFish(){
 const safe=f=>{try{const r=f();if(r&&r.catch)r.catch(()=>{});}catch(e){console.warn(e);}};
 safe(buildRadar); setInterval(()=>safe(buildRadar),300000);
 [loadNow,loadForecast,()=>loadTides().then(loadFish),loadBuoys,loadSwell,loadStorms,loadAlertPolys].forEach(safe);
+safe(()=>{if(S.me.val)locate(false);});
 setInterval(loadNow,600000);
 setInterval(loadForecast,600000);
 setInterval(loadTides,900000);
