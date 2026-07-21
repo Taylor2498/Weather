@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OB Tactical Wx">
+<meta name="theme-color" content="#060b13">
+<title>Oriole Beach Tactical Weather</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%23060b13"/><circle cx="50" cy="50" r="30" fill="none" stroke="%2345d6ff" stroke-width="6"/><circle cx="50" cy="50" r="14" fill="none" stroke="%2339ff6b" stroke-width="5"/><line x1="50" y1="50" x2="76" y2="30" stroke="%2339ff6b" stroke-width="5" stroke-linecap="round"/></svg>'>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060b13; --panel:#0a1220; --panel2:#0d1626; --line:#182a45; --line2:#23395e;
+  --cyn:#45d6ff; --grn:#39ff6b; --amb:#ffb020; --red:#ff5c5c; --mag:#ff5cd0;
+  --txt:#c6d6ec; --dim:#64809f; --bright:#eef6ff;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --disp:"Space Grotesk",var(--mono);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--txt);font-family:var(--mono);font-size:12px}
+body{padding-bottom:env(safe-area-inset-bottom)}
+/* ---------- header ---------- */
+header{position:sticky;top:0;z-index:1200;background:rgba(6,11,19,.92);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);padding:calc(8px + env(safe-area-inset-top)) 14px 8px;
+  display:flex;justify-content:space-between;align-items:center}
+.brand{display:flex;align-items:center;gap:9px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:pl 2s infinite}
+@keyframes pl{50%{opacity:.35}}
+.brand h1{font-family:var(--disp);font-size:15px;letter-spacing:1px;color:var(--bright)}
+.brand h1 span{color:var(--cyn)}
+.brand small{display:block;font-size:8.5px;color:var(--dim);letter-spacing:2px}
+#clock{text-align:right;font-size:10px;color:var(--dim)}
+#clock b{display:block;font-size:14px;color:var(--cyn);letter-spacing:1px}
+/* ---------- alert banner ---------- */
+#alerts{display:none;background:#2a1408;border-bottom:1px solid #5a3a10;color:var(--amb);
+  padding:7px 14px;font-size:11px;line-height:1.5}
+#alerts.red{background:#2a0a0a;border-color:#5a1616;color:var(--red)}
+#alerts b{letter-spacing:1px}
+/* ---------- map ---------- */
+#mapwrap{position:relative}
+#map{height:56vh;min-height:340px;background:#04070d}
+.leaflet-container{font-family:var(--mono)}
+.leaflet-control-attribution{background:rgba(6,11,19,.75)!important;color:#3d5878!important;font-size:8px!important}
+.leaflet-control-attribution a{color:#4d6b94!important}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--cyn)!important;border-color:var(--line)!important}
+.map-hud{position:absolute;z-index:1000;pointer-events:none}
+#radar-stamp{left:10px;bottom:24px;background:rgba(6,11,19,.8);border:1px solid var(--line);
+  padding:4px 9px;font-size:9px;color:var(--grn);letter-spacing:1px}
+#storm-chip{right:10px;top:10px;background:rgba(42,10,10,.88);border:1px solid #5a1616;color:var(--red);
+  padding:5px 10px;font-size:10px;letter-spacing:1px;display:none;pointer-events:auto}
+.radar-toggle{position:absolute;left:10px;top:10px;z-index:1000;pointer-events:auto;
+  background:rgba(6,11,19,.85);border:1px solid var(--line2);color:var(--cyn);
+  font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:6px 10px;cursor:pointer}
+.radar-toggle.on{color:var(--grn);border-color:#1d5a34}
+/* tooltips for swell bands + markers */
+.swell-tip{background:rgba(6,14,24,.88)!important;border:1px solid rgba(69,214,255,.5)!important;
+  color:var(--cyn)!important;font-family:var(--mono)!important;font-size:10px!important;
+  padding:2px 7px!important;border-radius:0!important;box-shadow:none!important;letter-spacing:.5px}
+.swell-tip::before{display:none}
+.leaflet-popup-content-wrapper{background:var(--panel)!important;color:var(--txt)!important;
+  border:1px solid var(--line2)!important;border-radius:4px!important;font-family:var(--mono)!important}
+.leaflet-popup-tip{background:var(--panel)!important;border:1px solid var(--line2)!important}
+.leaflet-popup-content{margin:10px 12px!important;font-size:11px!important;line-height:1.6!important}
+.pp-h{color:var(--cyn);font-weight:700;letter-spacing:1px;margin-bottom:3px}
+.pp-src{font-size:8.5px;letter-spacing:1px;padding:1px 5px;border:1px solid var(--line2);color:var(--dim)}
+.pp-src.obs{color:var(--grn);border-color:#1d5a34}
+.pp-row{display:flex;justify-content:space-between;gap:14px}
+.pp-row b{color:var(--bright)}
+/* ---------- panels ---------- */
+main{padding:10px 10px 26px;display:grid;gap:10px;max-width:900px;margin:0 auto}
+.panel{border:1px solid var(--line);background:var(--panel)}
+.p-hd{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;
+  border-bottom:1px solid var(--line);background:var(--panel2)}
+.p-hd h2{font-size:10px;letter-spacing:2px;color:var(--cyn);font-weight:500}
+.p-hd .st{font-size:8.5px;color:var(--dim);letter-spacing:1px}
+.p-bd{padding:12px}
+/* current conditions */
+.now{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.nw{border:1px solid var(--line);background:var(--panel2);padding:9px 10px}
+.nw .k{font-size:8.5px;color:var(--dim);letter-spacing:1.5px}
+.nw .v{font-family:var(--disp);font-size:22px;color:var(--bright);margin-top:3px;font-weight:700}
+.nw .v small{font-size:10px;color:var(--dim);font-weight:400;font-family:var(--mono)}
+.nw .s{font-size:9px;margin-top:2px;color:var(--dim)}
+.s .g{color:var(--grn)}.s .a{color:var(--amb)}.s .c{color:var(--cyn)}
+/* tide canvas */
+canvas{display:block;width:100%}
+.tide-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:10px;color:var(--dim)}
+.tide-meta b{color:var(--cyn)}
+/* buoy table */
+table{width:100%;border-collapse:collapse;font-size:10.5px}
+th{text-align:left;color:var(--dim);font-weight:400;font-size:8.5px;letter-spacing:1.5px;padding:4px 6px;border-bottom:1px solid var(--line)}
+td{padding:6px;border-bottom:1px solid #101c30}
+td.r,th.r{text-align:right}
+td b{color:var(--bright)} .cg{color:var(--grn)} .cc{color:var(--cyn)} .ca{color:var(--amb)}
+/* hourly strip */
+.hours{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.hr{min-width:64px;border:1px solid var(--line);background:var(--panel2);padding:8px 6px;text-align:center;flex-shrink:0}
+.hr .t{font-size:9px;color:var(--dim)}
+.hr .tv{font-family:var(--disp);font-size:16px;color:var(--bright);margin:3px 0;font-weight:700}
+.hr .pp{font-size:9px;color:var(--cyn)}
+.hr .wd{font-size:8.5px;color:var(--dim);margin-top:2px}
+footer{max-width:900px;margin:0 auto;padding:0 12px 34px;font-size:8.5px;color:#3a4f6c;
+  letter-spacing:1px;line-height:1.8;text-align:center}
+.err{color:var(--red);font-size:10px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="dot" id="livedot"></div>
+    <div>
+      <h1>ORIOLE BEACH <span>// TACTICAL WX</span></h1>
+      <small>30.37N 87.09W · GULF COAST SENSOR NET</small>
+    </div>
+  </div>
+  <div id="clock"><b>--:--:--</b>LOCAL · <span id="upd">SYNCING…</span></div>
+</header>
+
+<div id="alerts"></div>
+
+<div id="mapwrap">
+  <div id="map"></div>
+  <button class="radar-toggle on" id="radarBtn">◉ RADAR LOOP</button>
+  <div class="map-hud" id="radar-stamp">NEXRAD COMPOSITE · —</div>
+  <div class="map-hud" id="storm-chip"></div>
+</div>
+
+<main>
+  <div class="panel">
+    <div class="p-hd"><h2>CURRENT CONDITIONS — ORIOLE BEACH</h2><span class="st" id="nowSt">—</span></div>
+    <div class="p-bd"><div class="now" id="nowGrid"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="p-hd"><h2>TIDE — PENSACOLA STN 8729840</h2><span class="st" id="tideSt">—</span></div>
+    <div class="p-bd">
+      <canvas id="tideCv" height="130"></canvas>
+      <div class="tide-meta" id="tideMeta"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="p-hd"><h2>BUOY NETWORK</h2><span class="st" id="buoySt">—</span></div>
+    <div class="p-bd" style="overflow-x:auto">
+      <table id="buoyTbl">
+        <tr><th>STATION</th><th class="r">WAVES</th><th class="r">PERIOD</th><th class="r">WIND</th><th class="r">GUST</th><th class="r">PRES</th><th class="r">H₂O</th><th>SRC</th></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="p-hd"><h2>SWELL DECOMPOSITION — NEARSHORE</h2><span class="st" id="swellSt">—</span></div>
+    <div class="p-bd"><table id="swellTbl">
+      <tr><th>COMPONENT</th><th class="r">HEIGHT</th><th class="r">PERIOD</th><th class="r">FROM</th></tr>
+    </table></div>
+  </div>
+
+  <div class="panel">
+    <div class="p-hd"><h2>NEXT 12 HOURS — NWS MOBILE</h2><span class="st" id="fcSt">—</span></div>
+    <div class="p-bd"><div class="hours" id="hours"></div></div>
+  </div>
+</main>
+
+<footer>
+  DATA: NWS API · NOAA CO-OPS · NDBC · OPEN-METEO MARINE · IEM NEXRAD · NHC<br>
+  AUTO-REFRESH: WX 10MIN · MARINE 20MIN · TIDES 15MIN · RADAR 5MIN · NOT FOR NAVIGATION (OBVIOUSLY)
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+const HOME=[30.372,-87.088];
+const $=id=>document.getElementById(id);
+const kts=ms=>ms;                       // open-meteo called with kn already
+const ft=m=>m*3.28084;
+const dirTxt=d=>["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d/22.5)%16];
+const fmt=(v,dp=1)=>v==null||isNaN(v)?"—":(+v).toFixed(dp);
+
+/* ---------------- clock ---------------- */
+setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTimeString("en-US",{hour12:false}); },1000);
+
+/* ---------------- map ---------------- */
+const map=L.map("map",{zoomControl:true, attributionControl:true}).setView([30.05,-87.15],8);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  {attribution:"©OpenStreetMap ©CARTO",maxZoom:18}).addTo(map);
+
+/* --- radar loop (IEM NEXRAD mosaic, last 50 min, 6 frames) --- */
+const radarSuffix=["-m50m","-m40m","-m30m","-m20m","-m10m",""];
+const radarLayers=radarSuffix.map(s=>
+  L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s}/{z}/{x}/{y}.png`,
+    {opacity:0,maxZoom:12}));
+radarLayers.forEach(l=>l.addTo(map));
+let rf=0,radarOn=true;
+setInterval(()=>{
+  if(!radarOn)return;
+  radarLayers.forEach((l,i)=>l.setOpacity(i===rf?0.62:0));
+  const mins=[50,40,30,20,10,0][rf];
+  $("radar-stamp").textContent="NEXRAD COMPOSITE · "+(mins?`T−${mins} MIN`:"LATEST");
+  rf=(rf+1)%radarLayers.length;
+},900);
+$("radarBtn").onclick=()=>{
+  radarOn=!radarOn;
+  $("radarBtn").classList.toggle("on",radarOn);
+  if(!radarOn){radarLayers.forEach(l=>l.setOpacity(0));$("radar-stamp").textContent="NEXRAD COMPOSITE · OFF";}
+};
+/* refresh radar tiles every 5 min */
+setInterval(()=>radarLayers.forEach(l=>l.redraw()),300000);
+
+/* --- home marker + range rings --- */
+const homeIcon=L.divIcon({className:"",html:
+ `<div style="width:16px;height:16px;border:2px solid #45d6ff;background:rgba(69,214,255,.25);transform:rotate(45deg)"></div>`,
+ iconSize:[16,16],iconAnchor:[8,8]});
+L.marker(HOME,{icon:homeIcon}).addTo(map).bindPopup(`<div class="pp-h">HOME · ORIOLE BEACH</div>30.372N 87.088W`);
+[25,50].forEach(nm=>{
+  L.circle(HOME,{radius:nm*1852,color:"#39ff6b",weight:1,opacity:.35,fill:false,dashArray:"3 6"}).addTo(map);
+});
+
+/* --- buoy stations --- */
+const BUOYS=[
+ {id:"42012",name:"ORANGE BEACH",lat:30.064,lon:-87.555},
+ {id:"42039",name:"PENSACOLA S",lat:28.787,lon:-86.007},
+ {id:"42040",name:"MOBILE S",lat:29.207,lon:-88.237},
+];
+const buoyIcon=c=>L.divIcon({className:"",html:
+ `<div style="width:14px;height:14px;border:2px solid ${c};transform:rotate(45deg);background:rgba(6,11,19,.6)"></div>`,
+ iconSize:[14,14],iconAnchor:[7,7]});
+BUOYS.forEach(b=>{
+  b.marker=L.marker([b.lat,b.lon],{icon:buoyIcon("#ffe45c")}).addTo(map)
+    .bindPopup(`<div class="pp-h">NDBC ${b.id} · ${b.name}</div>loading…`);
+});
+/* tide station marker */
+L.marker([30.404,-87.211],{icon:buoyIcon("#ff5cd0")}).addTo(map)
+ .bindPopup(`<div class="pp-h">CO-OPS 8729840</div>PENSACOLA TIDE GAUGE`);
+
+/* --- swell bands (the concentric wave lines, live-labeled) --- */
+const BANDS=[{lat:30.12},{lat:29.75},{lat:29.30}];
+BANDS.forEach(bd=>{
+  const pts=[];
+  for(let lon=-88.35;lon<=-85.95;lon+=0.05){
+    const t=(lon+87.15)/1.2;                    // -1..1
+    pts.push([bd.lat-0.10*(1-t*t),lon]);        // gentle seaward bow
+  }
+  bd.line=L.polyline(pts,{color:"#45d6ff",weight:2,opacity:.55,dashArray:"6 7"}).addTo(map);
+  bd.line.bindTooltip("… ft @ …s",{permanent:true,direction:"center",className:"swell-tip",offset:[0,0]});
+});
+
+/* ---------------- data fetchers ---------------- */
+async function jget(u){const r=await fetch(u);if(!r.ok)throw new Error(r.status);return r.json();}
+async function tget(u){const r=await fetch(u);if(!r.ok)throw new Error(r.status);return r.text();}
+const stamp=el=>$(el).textContent="UPD "+new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
+
+/* ---- current conditions (open-meteo) ---- */
+async function loadNow(){
+  try{
+    const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${HOME[0]}&longitude=${HOME[1]}`+
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation`+
+      `&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto`);
+    const c=d.current;
+    $("nowGrid").innerHTML=`
+      <div class="nw"><div class="k">TEMP</div><div class="v">${Math.round(c.temperature_2m)}<small>°F</small></div><div class="s">FEELS <span class="c">${Math.round(c.apparent_temperature)}°</span></div></div>
+      <div class="nw"><div class="k">WIND</div><div class="v">${Math.round(c.wind_speed_10m)}<small>KT</small></div><div class="s"><span class="g">${dirTxt(c.wind_direction_10m)}</span> ${Math.round(c.wind_direction_10m)}°</div></div>
+      <div class="nw"><div class="k">GUST</div><div class="v">${Math.round(c.wind_gusts_10m)}<small>KT</small></div><div class="s ${c.wind_gusts_10m>=25?"":""}"><span class="${c.wind_gusts_10m>=25?"a":"g"}">${c.wind_gusts_10m>=25?"ELEVATED":"NOMINAL"}</span></div></div>
+      <div class="nw"><div class="k">PRESSURE</div><div class="v">${fmt(c.pressure_msl,1)}<small>MB</small></div><div class="s c">MSL</div></div>
+      <div class="nw"><div class="k">HUMIDITY</div><div class="v">${c.relative_humidity_2m}<small>%</small></div><div class="s">RH 2M</div></div>
+      <div class="nw"><div class="k">PRECIP</div><div class="v">${fmt(c.precipitation,2)}<small>IN</small></div><div class="s">LAST HOUR</div></div>`;
+    stamp("nowSt");
+  }catch(e){$("nowGrid").innerHTML=`<div class="err">conditions feed unavailable — retrying</div>`;}
+}
+
+/* ---- NWS hourly + alerts ---- */
+async function loadForecast(){
+  try{
+    const p=await jget(`https://api.weather.gov/points/${HOME[0]},${HOME[1]}`);
+    const h=await jget(p.properties.forecastHourly);
+    const rows=h.properties.periods.slice(0,12).map(x=>`
+      <div class="hr">
+        <div class="t">${new Date(x.startTime).toLocaleTimeString("en-US",{hour:"numeric"})}</div>
+        <div class="tv">${x.temperature}°</div>
+        <div class="pp">${x.probabilityOfPrecipitation?.value??0}%</div>
+        <div class="wd">${x.windSpeed.replace(" mph","M")} ${x.windDirection}</div>
+      </div>`).join("");
+    $("hours").innerHTML=rows;
+    stamp("fcSt");
+  }catch(e){$("hours").innerHTML=`<div class="err">NWS forecast unavailable — retrying</div>`;}
+  try{
+    const a=await jget(`https://api.weather.gov/alerts/active?point=${HOME[0]},${HOME[1]}`);
+    const feats=a.features||[];
+    if(feats.length){
+      const worst=feats.some(f=>/warning/i.test(f.properties.event));
+      $("alerts").className=worst?"red":"";
+      $("alerts").style.display="block";
+      $("alerts").innerHTML="⚠ <b>"+feats.map(f=>f.properties.event.toUpperCase()).join(" · ")+"</b> — tap map layers / NWS for details";
+    } else $("alerts").style.display="none";
+  }catch(e){}
+}
+
+/* ---- tides (CO-OPS) ---- */
+async function loadTides(){
+  const base="https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=8729840&datum=MLLW&units=english&time_zone=lst_ldt&format=json";
+  try{
+    const [pred,hilo,obs]=await Promise.all([
+      jget(base+"&product=predictions&date=today"),
+      jget(base+"&product=predictions&interval=hilo&date=today"),
+      jget(base+"&product=water_level&date=latest").catch(()=>null)
+    ]);
+    drawTide(pred.predictions,hilo.predictions,obs?.data?.[0]);
+    stamp("tideSt");
+  }catch(e){$("tideMeta").innerHTML=`<span class="err">tide feed unavailable — retrying</span>`;}
+}
+function drawTide(pred,hilo,obs){
+  const cv=$("tideCv"),ctx=cv.getContext("2d");
+  const r=cv.getBoundingClientRect();cv.width=r.width*devicePixelRatio;cv.height=130*devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  const W=r.width,H=130;
+  ctx.clearRect(0,0,W,H);
+  const vs=pred.map(p=>+p.v), lo=Math.min(...vs)-.15, hi=Math.max(...vs)+.15;
+  const X=i=>i/(pred.length-1)*W, Y=v=>H-14-((v-lo)/(hi-lo))*(H-28);
+  ctx.strokeStyle="rgba(69,214,255,.12)";
+  for(let y=14;y<H;y+=28){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  /* fill */
+  ctx.beginPath();ctx.moveTo(0,H);
+  pred.forEach((p,i)=>ctx.lineTo(X(i),Y(+p.v)));
+  ctx.lineTo(W,H);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,"rgba(69,214,255,.22)");g.addColorStop(1,"rgba(69,214,255,.02)");
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();pred.forEach((p,i)=>i?ctx.lineTo(X(i),Y(+p.v)):ctx.moveTo(X(i),Y(+p.v)));
+  ctx.strokeStyle="#45d6ff";ctx.lineWidth=2;ctx.stroke();
+  /* now line */
+  const now=new Date(), t0=new Date(pred[0].t.replace(" ","T")), t1=new Date(pred[pred.length-1].t.replace(" ","T"));
+  const nx=Math.max(0,Math.min(1,(now-t0)/(t1-t0)))*W;
+  ctx.strokeStyle="#ff5c5c";ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(nx,6);ctx.lineTo(nx,H-6);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle="#ff5c5c";ctx.font="9px 'IBM Plex Mono'";ctx.fillText("NOW",Math.min(nx+4,W-32),12);
+  /* hi/lo markers */
+  ctx.fillStyle="#39ff6b";
+  hilo.forEach(p=>{
+    const tt=new Date(p.t.replace(" ","T"));
+    const px=Math.max(0,Math.min(1,(tt-t0)/(t1-t0)))*W;
+    ctx.beginPath();ctx.arc(px,Y(+p.v),3,0,7);ctx.fill();
+  });
+  /* obs point */
+  let obsTxt="";
+  if(obs){
+    ctx.fillStyle="#ffe45c";
+    ctx.beginPath();ctx.arc(nx,Y(+obs.v),4,0,7);ctx.fill();
+    obsTxt=`OBSERVED NOW <b>${fmt(obs.v,2)} FT</b> · `;
+  }
+  $("tideMeta").innerHTML=obsTxt+hilo.map(p=>
+    `${+p.v>((lo+hi)/2)?"▲HIGH":"▽LOW"} <b>${new Date(p.t.replace(" ","T")).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</b> ${fmt(p.v,1)}FT`).join(" · ");
+}
+
+/* ---- buoys: NDBC obs first, open-meteo marine fallback ---- */
+function parseNDBC(txt){
+  const lines=txt.trim().split("\n");
+  const hdr=lines[0].replace(/^#/,"").trim().split(/\s+/);
+  const row=lines.find((l,i)=>i>1&&!l.startsWith("#"));
+  if(!row)return null;
+  const v=row.trim().split(/\s+/), o={};
+  hdr.forEach((h,i)=>o[h]=v[i]==="MM"?null:+v[i]);
+  return o;
+}
+async function loadBuoys(){
+  const marine=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
+    `&current=wave_height,wave_period,wave_direction,sea_surface_temperature&timezone=auto`).catch(()=>null);
+  const wx=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
+    `&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kn&timezone=auto`).catch(()=>null);
+  const mArr=Array.isArray(marine)?marine:[marine], wArr=Array.isArray(wx)?wx:[wx];
+
+  let html=`<tr><th>STATION</th><th class="r">WAVES</th><th class="r">PERIOD</th><th class="r">WIND</th><th class="r">GUST</th><th class="r">PRES</th><th class="r">H₂O</th><th>SRC</th></tr>`;
+  for(let i=0;i<BUOYS.length;i++){
+    const b=BUOYS[i];
+    let d={},src="MODEL";
+    try{
+      const o=parseNDBC(await tget(`https://www.ndbc.noaa.gov/data/realtime2/${b.id}.txt`));
+      if(o){d={wv:ft(o.WVHT),per:o.DPD,wind:o.WSPD*1.944,gust:o.GST*1.944,pres:o.PRES,wtmp:o.WTMP!=null?o.WTMP*9/5+32:null,dir:o.MWD};src="OBS";}
+    }catch(e){}
+    if(src==="MODEL"&&mArr?.[i]?.current){
+      const m=mArr[i].current,w=wArr?.[i]?.current||{};
+      d={wv:ft(m.wave_height),per:m.wave_period,wind:w.wind_speed_10m,gust:w.wind_gusts_10m,pres:w.pressure_msl,
+         wtmp:m.sea_surface_temperature!=null?m.sea_surface_temperature*9/5+32:null,dir:m.wave_direction};
+    }
+    b.data=d;b.src=src;
+    html+=`<tr><td><b>${b.id}</b> ${b.name}</td>
+      <td class="r cc"><b>${fmt(d.wv)}FT</b></td><td class="r">${fmt(d.per,0)}S</td>
+      <td class="r">${fmt(d.wind,0)}KT</td><td class="r ${d.gust>=25?"ca":""}">${fmt(d.gust,0)}KT</td>
+      <td class="r">${fmt(d.pres,1)}</td><td class="r">${fmt(d.wtmp,0)}°F</td>
+      <td><span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></td></tr>`;
+    b.marker.setPopupContent(`
+      <div class="pp-h">NDBC ${b.id} · ${b.name} <span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></div>
+      <div class="pp-row"><span>WAVES</span><b>${fmt(d.wv)} FT @ ${fmt(d.per,0)}S ${d.dir!=null?dirTxt(d.dir):""}</b></div>
+      <div class="pp-row"><span>WIND</span><b>${fmt(d.wind,0)} KT G${fmt(d.gust,0)}</b></div>
+      <div class="pp-row"><span>PRES</span><b>${fmt(d.pres,1)} MB</b></div>
+      <div class="pp-row"><span>WATER</span><b>${fmt(d.wtmp,0)} °F</b></div>`);
+  }
+  $("buoyTbl").innerHTML=html;
+  stamp("buoySt");
+}
+
+/* ---- swell bands + decomposition (open-meteo marine at 3 offshore points + nearshore) ---- */
+async function loadSwell(){
+  try{
+    const lats=[...BANDS.map(b=>b.lat),30.30], lons=lats.map(()=> -87.15);
+    const d=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}`+
+      `&current=wave_height,wave_period,swell_wave_height,swell_wave_period,swell_wave_direction,wind_wave_height,wind_wave_period,wind_wave_direction&timezone=auto`);
+    const arr=Array.isArray(d)?d:[d];
+    BANDS.forEach((bd,i)=>{
+      const c=arr[i]?.current;if(!c)return;
+      bd.line.setTooltipContent(`${fmt(ft(c.wave_height))} FT @ ${fmt(c.wave_period,0)}S`);
+      const sev=ft(c.wave_height);
+      bd.line.setStyle({color:sev>=8?"#ff5c5c":sev>=5?"#ffb020":"#45d6ff"});
+    });
+    const n=arr[3]?.current;
+    if(n){
+      $("swellTbl").innerHTML=`
+        <tr><th>COMPONENT</th><th class="r">HEIGHT</th><th class="r">PERIOD</th><th class="r">FROM</th></tr>
+        <tr><td><b>COMBINED SEAS</b></td><td class="r cc"><b>${fmt(ft(n.wave_height))} FT</b></td><td class="r">${fmt(n.wave_period,0)}S</td><td class="r">—</td></tr>
+        <tr><td>PRIMARY SWELL</td><td class="r cg">${fmt(ft(n.swell_wave_height))} FT</td><td class="r">${fmt(n.swell_wave_period,0)}S</td><td class="r">${n.swell_wave_direction!=null?dirTxt(n.swell_wave_direction):"—"}</td></tr>
+        <tr><td>WIND SEA</td><td class="r ca">${fmt(ft(n.wind_wave_height))} FT</td><td class="r">${fmt(n.wind_wave_period,0)}S</td><td class="r">${n.wind_wave_direction!=null?dirTxt(n.wind_wave_direction):"—"}</td></tr>`;
+    }
+    stamp("swellSt");
+  }catch(e){$("swellTbl").innerHTML=`<tr><td class="err">marine model unavailable — retrying</td></tr>`;}
+}
+
+/* ---- NHC active storms ---- */
+async function loadStorms(){
+  try{
+    const d=await jget("https://www.nhc.noaa.gov/CurrentStorms.json");
+    const s=(d.activeStorms||[]).filter(x=>/AT|AL/i.test(x.binNumber||"")||x.isActive);
+    if(s.length){
+      const st=s[0];
+      $("storm-chip").style.display="block";
+      $("storm-chip").innerHTML=`🌀 ${st.classification||""} ${st.name?.toUpperCase()} · ${st.intensity||"—"}KT`;
+      if(st.latitudeNumeric&&st.longitudeNumeric){
+        L.circleMarker([st.latitudeNumeric,st.longitudeNumeric],
+          {radius:9,color:"#ff5c5c",weight:2,fillOpacity:.2}).addTo(map)
+          .bindPopup(`<div class="pp-h">${st.name?.toUpperCase()}</div>${st.classification} · ${st.intensity}KT · ${st.pressure}MB<br>MOVING ${st.movementDir}° @ ${st.movementSpeed}KT`);
+      }
+    }
+  }catch(e){/* NHC feed blocked or quiet basin — chip stays hidden */}
+}
+
+/* ---------------- boot + refresh cadence ---------------- */
+function upd(){$("upd").textContent="LIVE";}
+loadNow().then(upd);   loadForecast(); loadTides(); loadBuoys(); loadSwell(); loadStorms();
+setInterval(loadNow,600000);
+setInterval(loadForecast,600000);
+setInterval(loadTides,900000);
+setInterval(()=>{loadBuoys();loadSwell();},1200000);
+setInterval(loadStorms,1800000);
+addEventListener("resize",loadTides);
+</script>
+</body>
+</html>
