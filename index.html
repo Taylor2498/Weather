@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.3</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v4.4</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -628,7 +628,21 @@ setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTi
 
 /* ================= MAP ================= */
 const map=L.map("map",{zoomControl:false,preferCanvas:true,tap:false,
-  zoomSnap:.5,wheelPxPerZoomLevel:110}).setView([30.05,-87.15],8);
+  zoomSnap:.5,wheelPxPerZoomLevel:110,
+  maxBounds:[[-85.05,-180],[85.05,180]],maxBoundsViscosity:1
+  }).setView([30.05,-87.15],8);
+/* Zoom floor: the world is 256*2^z px tall, so anything below log2(viewH/256)
+   leaves bare canvas above and below the map. Recomputed on resize/rotate so a
+   landscape phone and an iPad get their own floor. */
+function mapZoomFloor(){
+  const sz=map.getSize();
+  const need=Math.max(Math.log2(sz.y/256),Math.log2(sz.x/256)-0.35);
+  const mz=Math.max(1,Math.ceil(need*2)/2);
+  if(map.getMinZoom()!==mz){
+    map.setMinZoom(mz);
+    if(map.getZoom()<mz)map.setZoom(mz);
+  }
+}
 map.createPane("irPane");     map.getPane("irPane").style.zIndex=340;    // global cloud tops
 map.createPane("radarPane");  map.getPane("radarPane").style.zIndex=350;  // above ALL basemaps
 map.createPane("windPane");   map.getPane("windPane").style.zIndex=352;   // over radar, under alerts
@@ -2071,7 +2085,7 @@ function renderSeasonCal(){
 
    v4.2: surface only. Spending the whole request budget on one level buys a much
    denser grid (up to 476 points against the old 192) and room for gusts. */
-const WIND_STEP=8, WIND_MAXAGE=120, WIND_MAXPTS=1000;
+const WIND_STEP=8, WIND_MAXAGE=160, WIND_MAXPTS=1200, WIND_CHUNK=350;
 let windCv=null, windCtx=null, windField=null, windParts=[], windRAF=null,
     windTok=0, windKey="", windAt=0, windBusy=false, windPeak=0, windMean=0,
     windLastGrid=null, windMoveT=null, windProbeTok=0;
@@ -2083,9 +2097,14 @@ function windColor(kt){
 }
 /* Grid density follows zoom. Zoomed out, a coarse grid is the accuracy limit;
    zoomed in, the model itself is, so fewer points do the same job for less. */
+/* Density is what buys the curl. A 10-degree grid can only draw the zonal mean --
+   the westerlies came out as flat green stripes with no eddies in them. Open-Meteo
+   caps one request at 1000 coordinates, but the real ceiling is URL length, so the
+   point list is split into WIND_CHUNK-sized requests fired in parallel and
+   concatenated in order. Roughly doubles the anchor count at every zoom. */
 function windGridSize(){
   const z=map.getZoom();
-  return z<=4?[28,17]:z<=7?[22,16]:z<=11?[18,14]:[14,10];
+  return z<=4?[34,26]:z<=7?[30,24]:z<=11?[26,20]:[20,15];
 }
 function windEnsureCanvas(){
   if(windCv)return;
@@ -2123,9 +2142,10 @@ async function windLoad(force){
     if(E0-W0>=359.5){ W0=-179.9; E0=179.9; }        /* whole world in view */
     const lats=[],lons=[];
     for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
-      lats.push((S0+(N0-S0)*r/(ROWS-1)).toFixed(3));
+      const dp=z>=10?3:2;                            /* 2dp is ~1 km, well under model res */
+      lats.push((S0+(N0-S0)*r/(ROWS-1)).toFixed(dp));
       const lon=W0+(E0-W0)*c/(COLS-1);
-      lons.push((((lon+540)%360)-180).toFixed(3));   /* normalise across the dateline */
+      lons.push((((lon+540)%360)-180).toFixed(dp));   /* normalise across the dateline */
     }
     if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
     /* current= is the freshest surface nowcast; hourly is the fallback if a
@@ -2138,14 +2158,25 @@ async function windLoad(force){
        seamless family for wide views; best_match returns at z>=8 for the 3 km detail,
        where a viewport sits inside a single model domain anyway. */
     const model=z<=7?"gfs_seamless":"best_match";
-    const j=await jget("https://api.open-meteo.com/v1/forecast"+
-      "?latitude="+lats.join(",")+"&longitude="+lons.join(",")+
-      "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
-      "&hourly=wind_speed_10m,wind_direction_10m&forecast_hours=2"+
-      "&models="+model+"&cell_selection=nearest"+
-      "&wind_speed_unit=kn&timezone=UTC");
+    /* One request is capped at 1000 coordinates and, in practice, by URL length --
+       so the point list goes out as parallel chunks and comes back concatenated. */
+    const reqs=[];
+    for(let i0=0;i0<lats.length;i0+=WIND_CHUNK){
+      const la=lats.slice(i0,i0+WIND_CHUNK), lo=lons.slice(i0,i0+WIND_CHUNK);
+      reqs.push(jget("https://api.open-meteo.com/v1/forecast"+
+        "?latitude="+la.join(",")+"&longitude="+lo.join(",")+
+        "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
+        "&hourly=wind_speed_10m,wind_direction_10m&forecast_hours=2"+
+        "&models="+model+"&cell_selection=nearest"+
+        "&wind_speed_unit=kn&timezone=UTC"));
+    }
+    const parts=await Promise.all(reqs);
     if(tok!==windTok)return;
-    const arr=Array.isArray(j)?j:[j], now=Date.now();
+    /* order is preserved inside a response and across chunks, so a plain concat
+       puts every point back on its own grid slot */
+    const arr=[], now=Date.now();
+    parts.forEach(p=>{ (Array.isArray(p)?p:[p]).forEach(o=>arr.push(o)); });
+    if(arr.length!==lats.length)throw new Error("grid length mismatch");
     const grid=arr.map(o=>{
       let sp=null,dir=null,gst=null;
       const cur=o&&o.current;
@@ -2185,9 +2216,14 @@ function windBuildField(grid,S0,N0,W0,E0,COLS,ROWS){
   const size=map.getSize();
   const cols=Math.ceil(size.x/WIND_STEP)+1, rows=Math.ceil(size.y/WIND_STEP)+1;
   const f=new Float32Array(cols*rows*3);
-  const at=(c,r)=>grid[Math.min(ROWS-1,Math.max(0,r))*COLS+Math.min(COLS-1,Math.max(0,c))];
+  /* No clamping. Clamped edges repeated the top grid row forever, which is why
+     wind blew across the black canvas above the map at world zoom. Out of range
+     now returns null and the cell ends up flagged as no-data. */
+  const at=(c,r)=>(c<0||r<0||c>=COLS||r>=ROWS)?null:grid[r*COLS+c];
   for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
     const ll=map.containerPointToLatLng([i*WIND_STEP,j*WIND_STEP]);
+    const o0=(j*cols+i)*3;
+    if(!(ll.lat>=S0&&ll.lat<=N0)||Math.abs(ll.lat)>85.06){ f[o0+2]=-1; continue; }
     let lng=ll.lng;                                  /* unwrap onto the grid's span */
     while(lng<W0)lng+=360; while(lng>W0+360)lng-=360;
     const gx=(lng-W0)/(E0-W0)*(COLS-1), gy=(ll.lat-S0)/(N0-S0)*(ROWS-1);
@@ -2204,7 +2240,7 @@ function windBuildField(grid,S0,N0,W0,E0,COLS,ROWS){
 }
 function windSeed(){
   if(!windField)return;
-  const n=Math.round(Math.min(3000,Math.max(800,windField.w*windField.h/200)));
+  const n=Math.round(Math.min(5200,Math.max(1200,windField.w*windField.h/130)));
   windParts=Array.from({length:n},()=>({
     x:Math.random()*windField.w, y:Math.random()*windField.h, age:Math.random()*WIND_MAXAGE}));
 }
@@ -2221,14 +2257,18 @@ function windSample(x,y){
    screen, and the zoom term restores some of the sense that zooming in is closer. */
 function windPxPerFrame(kt){
   const z=map.getZoom();
-  return 0.62*Math.pow(Math.max(kt,0.4),0.62)*Math.max(0.65,Math.min(1.7,1+(z-8)*0.055));
+  /* v4.4: base cut from 0.62 to 0.20. At the old rate 15 kt crossed the screen in
+     about two seconds -- fast enough that the eye read streaks instead of flow and
+     a particle left any eddy before it could turn through it. ~1.2 px/frame at
+     15 kt is the nullschool-ish pace where curl becomes visible. */
+  return 0.20*Math.pow(Math.max(kt,0.4),0.62)*Math.max(0.65,Math.min(1.7,1+(z-8)*0.055));
 }
 function windTick(){
   windRAF=requestAnimationFrame(windTick);
   if(!windField||!windCtx||!S.wind.val||!mapVisible())return;
   const c=windCtx;
   c.globalCompositeOperation="destination-in";
-  c.fillStyle="rgba(0,0,0,0.87)";
+  c.fillStyle="rgba(0,0,0,0.90)";
   c.fillRect(0,0,windField.w,windField.h);
   c.globalCompositeOperation="source-over";
   c.lineCap="round";
@@ -2243,8 +2283,8 @@ function windTick(){
     const nx=p.x+q.dx*step, ny=p.y+q.dy*step;
     if(nx<0||ny<0||nx>=windField.w||ny>=windField.h){ p.age=WIND_MAXAGE+1; continue; }
     c.strokeStyle=windColor(q.s);
-    c.lineWidth=1+Math.min(1.3,q.s/24);
-    c.globalAlpha=Math.min(.95,0.5+q.s/38);
+    c.lineWidth=0.9+Math.min(0.9,q.s/34);          /* finer lines read as flow, not rain */
+    c.globalAlpha=Math.min(.92,0.45+q.s/40);
     c.beginPath(); c.moveTo(p.x,p.y); c.lineTo(nx,ny); c.stroke();
     p.x=nx; p.y=ny;
   }
@@ -2353,6 +2393,7 @@ function windBuildFieldFromCache(){
   windBuildField.apply(null,windLastGrid); windSeed(); windStop(); windTick();
 }
 windRenderLegend();
+mapZoomFloor();
 
 /* ================= BOOT ================= */
 const safe=f=>{try{const r=f();if(r&&r.catch)r.catch(()=>{});}catch(e){console.warn(e);}};
@@ -2373,7 +2414,9 @@ setInterval(()=>safe(loadHurricanes),1200000);
 let rsz=null;
 addEventListener("resize",()=>{
   clearTimeout(rsz);
-  rsz=setTimeout(()=>{if(tideCache)drawTide.apply(null,tideCache);drawRibbon();map.invalidateSize();},140);
+  rsz=setTimeout(()=>{if(tideCache)drawTide.apply(null,tideCache);drawRibbon();
+    map.invalidateSize(); mapZoomFloor();
+    if(S.wind&&S.wind.val){windEnsureCanvas();windPlaceCanvas();windBuildFieldFromCache();}},140);
 });
 /* keep the clock honest and stop burning cycles in the background */
 document.addEventListener("visibilitychange",()=>{
