@@ -1,0 +1,51 @@
+name: Global wind field
+
+# GFS runs at 00/06/12/18Z and lands on NOMADS roughly 3.5-5 h later, so these
+# fire a little after that. The script walks back through cycles anyway, so a
+# late publish just means it picks up the previous run.
+on:
+  schedule:
+    - cron: "25 4,10,16,22 * * *"
+  workflow_dispatch:          # the "Run workflow" button - use this for the first run
+
+permissions:
+  contents: write             # required: the job commits the baked files back
+
+concurrency:
+  group: wind-field
+  cancel-in-progress: false
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ecCodes
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy eccodes
+          # eccodes ships the native library in its wheel these days; if that
+          # ever stops being true, the system package is the fallback.
+          python -c "import eccodes; print('eccodes', eccodes.codes_get_api_version())" \
+            || { sudo apt-get update && sudo apt-get install -y libeccodes0; }
+
+      - name: Bake the field
+        run: python tools/make_wind.py --step 1.0 --out .
+
+      - name: Commit if it changed
+        run: |
+          git config user.name "wind-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wind-global.json wind-global.bin
+          if git diff --staged --quiet; then
+            echo "field unchanged, nothing to commit"
+          else
+            git commit -m "wind: $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
