@@ -299,13 +299,21 @@ tr:last-child td{border-bottom:none}
 #legend{bottom:calc(140px + env(safe-area-inset-bottom))}
 #surgeLegend{bottom:calc(216px + env(safe-area-inset-bottom))}
 #windLegend{bottom:calc(140px + env(safe-area-inset-bottom));max-width:224px}
+#windBtn{-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+#windProbe{position:absolute;z-index:1200;display:none;pointer-events:none;
+  background:rgba(7,28,41,.96);border:1px solid rgba(56,224,200,.45);border-radius:14px;
+  padding:9px 12px;box-shadow:0 8px 22px -8px #000,var(--inset);min-width:118px}
+#windProbe .wpH{font-size:7px;letter-spacing:1.6px;color:var(--aqua)}
+#windProbe .wpV{font-family:var(--disp);font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1.1}
+#windProbe .wpV small{font-size:10px;font-family:var(--mono);color:var(--haze);font-weight:400;margin-left:3px}
+#windProbe .wpD{font-size:10px;color:var(--foam);letter-spacing:.5px}
+#windProbe .wpG{font-size:8.5px;color:var(--sun);margin-top:2px;letter-spacing:.5px}
+#windProbe .wpC{font-size:7.5px;color:var(--haze);margin-top:4px;letter-spacing:.6px}
 #windLegend .lg-h{color:var(--haze);letter-spacing:1.6px;margin-bottom:6px;font-size:7.5px}
-#windLegend .chips{gap:5px;margin-bottom:7px;flex-wrap:wrap;overflow:visible}
-#windLegend .chip{padding:5px 9px;font-size:8px}
 .wsc{display:flex;flex-wrap:wrap;gap:5px 8px;font-size:7.5px;color:var(--txt)}
 .wsc i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:3px;vertical-align:-1px}
 .wnote{font-size:7.5px;color:var(--haze);margin-top:6px;line-height:1.5;letter-spacing:.4px}
-#windCv{opacity:.85}
+#windCv{opacity:.95}
 #legend .lg-h,#surgeLegend .lg-h{color:var(--haze);letter-spacing:1.6px;margin-bottom:4px;font-size:7.5px}
 #legend .lg-r,#surgeLegend .lg-r{display:flex;align-items:center;gap:7px;margin:3px 0;color:var(--txt)}
 #legend .sw,#surgeLegend .sw{width:12px;height:9px;flex-shrink:0;border-radius:3px;border:1px solid rgba(255,255,255,.32)}
@@ -397,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.1</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v4.2</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -425,12 +433,12 @@ nav button:active svg{transform:scale(.86)}
     <div id="storm-chip"></div>
     <div id="legend"><div class="lg-h">ACTIVE ALERTS</div><div id="legendRows"></div></div>
     <div id="surgeLegend"></div>
+    <div id="windProbe"></div>
     <div id="windLegend">
-      <div class="lg-h">ANIMATED WIND · KNOTS</div>
-      <div class="chips" id="windLevels"></div>
+      <div class="lg-h">SURFACE WIND · KNOTS</div>
       <div class="wsc" id="windScale"></div>
-      <div class="wnote" id="windNote"></div>
       <div class="wnote" id="windSt">—</div>
+      <div class="wnote">Double-tap the map for the wind at that spot.</div>
     </div>
   </div>
 
@@ -822,7 +830,7 @@ const S={
   alertsL:{label:"WATCH/WARNING ZONES",desc:"Live NWS alert polygons",dflt:true,
     apply(v){v?alertLayer.addTo(map):map.removeLayer(alertLayer);
       $("legend").style.display=(v&&$("legendRows").innerHTML)?"block":"none";}},
-  wind:{label:"ANIMATED WIND",desc:"Live particle flow for whatever you're looking at — surface to jet stream",dflt:false,
+  wind:{label:"ANIMATED WIND",desc:"Live surface wind flow. Hold the WIND button for the key; double-tap the map to read a spot",dflt:false,
     apply(v){windSetVisible(v);}},
   rings:{label:"RANGE RINGS",desc:"25 / 50 NM from home",dflt:true,
     apply(v){v?gRings.addTo(map):map.removeLayer(gRings);}},
@@ -875,6 +883,7 @@ tabs.forEach(btn=>{
     $("view-"+btn.dataset.v).classList.add("active");
     movePill(btn);
     const v=btn.dataset.v;
+    if(v!=="map")windProbeHide();
     if(v==="map")setTimeout(()=>map.invalidateSize(),60);
     if(v==="tides")setTimeout(()=>{if(tideCache)drawTide.apply(null,tideCache);drawRibbon();},60);
   };
@@ -2052,32 +2061,31 @@ function renderSeasonCal(){
   $("calSt").textContent="REVIEWED "+REGS_REVIEWED.toUpperCase();
 }
 
-/* ================= ANIMATED WIND FIELD =================
-   The technique is the earth.nullschool / wind-js one: bilinear-interpolate a
-   coarse wind grid into a screen-space vector field, then advect particles
-   across it leaving fading trails.
+/* ================= ANIMATED WIND FIELD (surface) =================
+   Particle advection over a bilinear-interpolated vector field, the
+   earth.nullschool / wind-js technique. GFS ships GRIB2 and needs a server to
+   decode, so instead of a fixed global grid we ask Open-Meteo for a grid of
+   points covering exactly what the map is showing — it takes up to 1000
+   coordinates per request. That works anywhere on Earth and gets sharper as you
+   zoom, because Open-Meteo returns its highest-resolution model for the area.
 
-   The usual blocker is data — GFS ships GRIB2, which needs a server to decode,
-   and this app is a static file on GitHub Pages. So instead of a fixed global
-   grid, we ask Open-Meteo for a grid of points covering whatever the map is
-   currently showing (it takes up to 1000 coordinates per request). That works
-   anywhere on Earth and gets *better* as you zoom in, because Open-Meteo hands
-   back its highest-resolution model for the area — roughly 3 km over the US
-   against nullschool's fixed 1 degree. */
-const WIND_LEVELS=[
-  {v:"10m",   label:"SURFACE", note:"10 m — what you feel on the boat"},
-  {v:"850hPa",label:"850 hPa", note:"~5,000 ft — steering flow for storms"},
-  {v:"500hPa",label:"500 hPa", note:"~18,000 ft — the mid-level pattern"},
-  {v:"250hPa",label:"JET",     note:"~34,000 ft — the jet stream"}
-];
-const WIND_COLS=16, WIND_ROWS=12, WIND_STEP=8, WIND_MAXAGE=110;
-let windLevel=0, windCv=null, windCtx=null, windField=null, windParts=[],
-    windRAF=null, windTok=0, windKey="", windAt=0, windBusy=false;
+   v4.2: surface only. Spending the whole request budget on one level buys a much
+   denser grid (up to 476 points against the old 192) and room for gusts. */
+const WIND_STEP=8, WIND_MAXAGE=120, WIND_MAXPTS=1000;
+let windCv=null, windCtx=null, windField=null, windParts=[], windRAF=null,
+    windTok=0, windKey="", windAt=0, windBusy=false, windPeak=0, windMean=0,
+    windLastGrid=null, windMoveT=null, windProbeTok=0;
 
-/* knots -> ramp. Marine units, because that is what the rest of the app speaks. */
+/* knots -> ramp, marine units like the rest of the app */
 function windColor(kt){
   return kt<5?"#4a90d9":kt<10?"#5fc8ff":kt<15?"#38e0c8":kt<20?"#7ee06a"
         :kt<25?"#ffc24b":kt<34?"#ff9147":"#ff6b57";
+}
+/* Grid density follows zoom. Zoomed out, a coarse grid is the accuracy limit;
+   zoomed in, the model itself is, so fewer points do the same job for less. */
+function windGridSize(){
+  const z=map.getZoom();
+  return z<=4?[28,17]:z<=7?[22,16]:z<=11?[18,14]:[14,10];
 }
 function windEnsureCanvas(){
   if(windCv)return;
@@ -2088,63 +2096,75 @@ function windEnsureCanvas(){
   windCtx=windCv.getContext("2d");
 }
 function windPlaceCanvas(){
-  const size=map.getSize(), dpr=1;                  /* 1:1 — particles are thin lines, dpr buys nothing */
-  windCv.width=size.x*dpr; windCv.height=size.y*dpr;
+  const size=map.getSize();
+  windCv.width=size.x; windCv.height=size.y;
   windCv.style.width=size.x+"px"; windCv.style.height=size.y+"px";
   L.DomUtil.setPosition(windCv,map.containerPointToLayerPoint([0,0]));
 }
 function windStop(){ if(windRAF!=null){cancelAnimationFrame(windRAF);windRAF=null;} }
 function windClear(){ if(windCtx&&windCv)windCtx.clearRect(0,0,windCv.width,windCv.height); }
 
-/* --- fetch one grid covering the current viewport --- */
+/* --- one grid covering the current viewport --- */
 async function windLoad(force){
   if(!S.wind||!S.wind.val||!mapVisible())return;
-  const b=map.getBounds();
-  const key=[map.getZoom(),b.getSouth().toFixed(2),b.getWest().toFixed(2),
-             b.getNorth().toFixed(2),b.getEast().toFixed(2),windLevel].join("|");
-  if(!force&&key===windKey&&Date.now()-windAt<900000)return;   /* view unchanged and data fresh */
+  const b=map.getBounds(), z=map.getZoom();
+  const key=[z,b.getSouth().toFixed(2),b.getWest().toFixed(2),
+             b.getNorth().toFixed(2),b.getEast().toFixed(2)].join("|");
+  if(!force&&key===windKey&&Date.now()-windAt<900000)return;
   if(windBusy)return;
   windBusy=true;
   const tok=++windTok;
   $("windSt").textContent="LOADING…";
   try{
+    const g=windGridSize(), COLS=g[0], ROWS=g[1];
     const padY=(b.getNorth()-b.getSouth())*0.1, padX=(b.getEast()-b.getWest())*0.1;
     const S0=Math.max(-84,b.getSouth()-padY), N0=Math.min(84,b.getNorth()+padY);
-    const W0=Math.max(-179.9,b.getWest()-padX), E0=Math.min(179.9,b.getEast()+padX);
+    let W0=b.getWest()-padX, E0=b.getEast()+padX;
+    if(E0-W0>=359.5){ W0=-179.9; E0=179.9; }        /* whole world in view */
     const lats=[],lons=[];
-    for(let r=0;r<WIND_ROWS;r++)for(let c=0;c<WIND_COLS;c++){
-      lats.push((S0+(N0-S0)*r/(WIND_ROWS-1)).toFixed(3));
-      lons.push((W0+(E0-W0)*c/(WIND_COLS-1)).toFixed(3));
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+      lats.push((S0+(N0-S0)*r/(ROWS-1)).toFixed(3));
+      const lon=W0+(E0-W0)*c/(COLS-1);
+      lons.push((((lon+540)%360)-180).toFixed(3));   /* normalise across the dateline */
     }
-    const lv=WIND_LEVELS[windLevel].v;
+    if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
+    /* current= is the freshest surface nowcast; hourly is the fallback if a
+       model doesn't publish a current block for that point. */
     const j=await jget("https://api.open-meteo.com/v1/forecast"+
       "?latitude="+lats.join(",")+"&longitude="+lons.join(",")+
-      "&hourly=wind_speed_"+lv+",wind_direction_"+lv+
-      "&forecast_hours=2&wind_speed_unit=kn&timezone=UTC");
-    if(tok!==windTok)return;                    /* a newer request already won */
-    const arr=Array.isArray(j)?j:[j];           /* multi-location returns an array */
-    const sK="wind_speed_"+lv, dK="wind_direction_"+lv, now=Date.now();
+      "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
+      "&hourly=wind_speed_10m,wind_direction_10m&forecast_hours=2"+
+      "&wind_speed_unit=kn&timezone=UTC");
+    if(tok!==windTok)return;
+    const arr=Array.isArray(j)?j:[j], now=Date.now();
     const grid=arr.map(o=>{
-      const h=o&&o.hourly; if(!h||!h[sK]||!h[sK].length)return null;
-      let bi=0;                                  /* nearest hour to now, whatever the series start */
-      if(h.time&&h.time.length){
-        let bd=Infinity;
-        h.time.forEach((t,i)=>{
-          const d=Math.abs(new Date(t+(/Z|[+-]\d\d:?\d\d$/.test(t)?"":"Z"))-now);
-          if(d<bd&&h[sK][i]!=null){bd=d;bi=i;}
-        });
+      let sp=null,dir=null,gst=null;
+      const cur=o&&o.current;
+      if(cur&&cur.wind_speed_10m!=null&&cur.wind_direction_10m!=null){
+        sp=cur.wind_speed_10m; dir=cur.wind_direction_10m; gst=cur.wind_gusts_10m;
+      }else{
+        const h=o&&o.hourly;
+        if(h&&h.wind_speed_10m&&h.wind_speed_10m.length){
+          let bi=0,bd=Infinity;
+          (h.time||[]).forEach((t,i)=>{
+            const d=Math.abs(new Date(t+(/Z|[+-]\d\d:?\d\d$/.test(t)?"":"Z"))-now);
+            if(d<bd&&h.wind_speed_10m[i]!=null){bd=d;bi=i;}
+          });
+          sp=h.wind_speed_10m[bi]; dir=h.wind_direction_10m?h.wind_direction_10m[bi]:null;
+        }
       }
-      const sp=h[sK][bi], dir=h[dK]?h[dK][bi]:null;
       if(sp==null||dir==null)return null;
       const r=dir*Math.PI/180;
-      return {u:-sp*Math.sin(r), v:-sp*Math.cos(r), s:sp};   /* direction is where it blows FROM */
+      return {u:-sp*Math.sin(r), v:-sp*Math.cos(r), s:sp, g:gst};  /* direction is where it comes FROM */
     });
-    if(grid.filter(Boolean).length<grid.length*0.5)throw new Error("sparse grid");
+    const good=grid.filter(Boolean);
+    if(good.length<grid.length*0.5)throw new Error("sparse grid");
+    windPeak=Math.max.apply(null,good.map(x=>x.s));
+    windMean=good.reduce((a,x)=>a+x.s,0)/good.length;
     windKey=key; windAt=Date.now();
-    windLastGrid=[grid,S0,N0,W0,E0];
-    windBuildField(grid,S0,N0,W0,E0);
-    const mx=Math.max.apply(null,grid.filter(Boolean).map(g=>g.s));
-    $("windSt").textContent=WIND_LEVELS[windLevel].label+" · PEAK "+Math.round(mx)+" KT";
+    windLastGrid=[grid,S0,N0,W0,E0,COLS,ROWS];
+    windBuildField.apply(null,windLastGrid);
+    windUpdateLegend();
     windSeed(); windStop(); windTick();
   }catch(e){
     if(tok===windTok)$("windSt").textContent="WIND DATA UNAVAILABLE HERE";
@@ -2152,28 +2172,30 @@ async function windLoad(force){
 }
 
 /* --- bilinear the coarse grid into a screen-space field, once per view --- */
-function windBuildField(grid,S0,N0,W0,E0){
+function windBuildField(grid,S0,N0,W0,E0,COLS,ROWS){
   const size=map.getSize();
   const cols=Math.ceil(size.x/WIND_STEP)+1, rows=Math.ceil(size.y/WIND_STEP)+1;
   const f=new Float32Array(cols*rows*3);
-  const at=(c,r)=>grid[Math.min(WIND_ROWS-1,Math.max(0,r))*WIND_COLS+Math.min(WIND_COLS-1,Math.max(0,c))];
+  const at=(c,r)=>grid[Math.min(ROWS-1,Math.max(0,r))*COLS+Math.min(COLS-1,Math.max(0,c))];
   for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
     const ll=map.containerPointToLatLng([i*WIND_STEP,j*WIND_STEP]);
-    const gx=(ll.lng-W0)/(E0-W0)*(WIND_COLS-1), gy=(ll.lat-S0)/(N0-S0)*(WIND_ROWS-1);
+    let lng=ll.lng;                                  /* unwrap onto the grid's span */
+    while(lng<W0)lng+=360; while(lng>W0+360)lng-=360;
+    const gx=(lng-W0)/(E0-W0)*(COLS-1), gy=(ll.lat-S0)/(N0-S0)*(ROWS-1);
     const x0=Math.floor(gx), y0=Math.floor(gy), fx=gx-x0, fy=gy-y0;
     const q=[at(x0,y0),at(x0+1,y0),at(x0,y0+1),at(x0+1,y0+1)];
     const wt=[(1-fx)*(1-fy),fx*(1-fy),(1-fx)*fy,fx*fy];
     let u=0,v=0,s=0,tw=0;
     for(let k=0;k<4;k++){ if(!q[k])continue; u+=q[k].u*wt[k]; v+=q[k].v*wt[k]; s+=q[k].s*wt[k]; tw+=wt[k]; }
     const o=(j*cols+i)*3;
-    if(tw>0.01){ f[o]=u/tw; f[o+1]=-v/tw; f[o+2]=s/tw; }   /* screen y grows downward, so flip v */
-    else f[o+2]=-1;                                        /* -1 marks "no data here" */
+    if(tw>0.01){ f[o]=u/tw; f[o+1]=-v/tw; f[o+2]=s/tw; }   /* screen y grows downward */
+    else f[o+2]=-1;                                        /* -1 marks no data */
   }
   windField={f:f,cols:cols,rows:rows,w:size.x,h:size.y};
 }
 function windSeed(){
   if(!windField)return;
-  const n=Math.round(Math.min(3200,Math.max(700,windField.w*windField.h/260)));
+  const n=Math.round(Math.min(3000,Math.max(800,windField.w*windField.h/200)));
   windParts=Array.from({length:n},()=>({
     x:Math.random()*windField.w, y:Math.random()*windField.h, age:Math.random()*WIND_MAXAGE}));
 }
@@ -2184,69 +2206,130 @@ function windSample(x,y){
   const o=(j*F.cols+i)*3;
   return F.f[o+2]<0?null:{dx:F.f[o],dy:F.f[o+1],s:F.f[o+2]};
 }
-/* Artistic velocity scale, deliberately not real time: true advection at map
-   scale is a fraction of a pixel per frame and reads as a still image. */
-const WIND_SCALE=0.075;
+/* A 4 kt breeze advected at true map scale is a fraction of a pixel per frame and
+   reads as a field of dead dots — which is exactly what v4.1 looked like. The
+   compressive exponent keeps light air legible without letting a gale streak off
+   screen, and the zoom term restores some of the sense that zooming in is closer. */
+function windPxPerFrame(kt){
+  const z=map.getZoom();
+  return 0.62*Math.pow(Math.max(kt,0.4),0.62)*Math.max(0.65,Math.min(1.7,1+(z-8)*0.055));
+}
 function windTick(){
   windRAF=requestAnimationFrame(windTick);
   if(!windField||!windCtx||!S.wind.val||!mapVisible())return;
   const c=windCtx;
-  c.globalCompositeOperation="destination-in";      /* fade what's already drawn */
-  c.fillStyle="rgba(0,0,0,0.86)";
+  c.globalCompositeOperation="destination-in";
+  c.fillStyle="rgba(0,0,0,0.87)";
   c.fillRect(0,0,windField.w,windField.h);
   c.globalCompositeOperation="source-over";
-  c.lineWidth=1.1; c.lineCap="round";
+  c.lineCap="round";
   for(let k=0;k<windParts.length;k++){
     const p=windParts[k];
     if(p.age++>WIND_MAXAGE){
       p.x=Math.random()*windField.w; p.y=Math.random()*windField.h; p.age=0; continue;
     }
     const q=windSample(p.x,p.y);
-    if(!q){ p.age=WIND_MAXAGE+1; continue; }
-    const nx=p.x+q.dx*WIND_SCALE, ny=p.y+q.dy*WIND_SCALE;
+    if(!q||q.s<=0){ p.age=WIND_MAXAGE+1; continue; }
+    const step=windPxPerFrame(q.s)/q.s;              /* q.dx,q.dy carry the knots */
+    const nx=p.x+q.dx*step, ny=p.y+q.dy*step;
     if(nx<0||ny<0||nx>=windField.w||ny>=windField.h){ p.age=WIND_MAXAGE+1; continue; }
     c.strokeStyle=windColor(q.s);
-    c.globalAlpha=Math.min(.92,0.3+q.s/34);
+    c.lineWidth=1+Math.min(1.3,q.s/24);
+    c.globalAlpha=Math.min(.95,0.5+q.s/38);
     c.beginPath(); c.moveTo(p.x,p.y); c.lineTo(nx,ny); c.stroke();
     p.x=nx; p.y=ny;
   }
   c.globalAlpha=1;
 }
+function windUpdateLegend(){
+  $("windSt").textContent="PEAK "+Math.round(windPeak)+" KT · AVG "+Math.round(windMean)+" KT";
+}
 function windSetVisible(v){
-  const lg=$("windLegend"), btn=$("windBtn");
+  const btn=$("windBtn");
   if(btn)btn.classList.toggle("on",!!v);
-  if(!v){ windStop(); windClear(); if(windCv)windCv.style.display="none"; if(lg)lg.style.display="none"; return; }
+  if(!v){
+    windStop(); windClear(); windProbeHide(); windLegendHide();
+    if(windCv)windCv.style.display="none";
+    if(map.doubleClickZoom)map.doubleClickZoom.enable();
+    return;
+  }
   windEnsureCanvas(); windPlaceCanvas();
-  windCv.style.display=""; if(lg)lg.style.display="block";
+  windCv.style.display="";
+  if(map.doubleClickZoom)map.doubleClickZoom.disable();   /* double-tap probes instead of zooming */
   windLoad(true);
 }
+
+/* --- hold the WIND button to peek at the key --- */
+let windHoldT=null, windHeld=false;
+function windLegendShow(){ $("windLegend").style.display="block"; }
+function windLegendHide(){ $("windLegend").style.display="none"; }
 function windRenderLegend(){
-  $("windLevels").innerHTML=WIND_LEVELS.map((l,i)=>
-    `<button class="chip ${i===windLevel?"on":""}" data-lv="${i}">${l.label}</button>`).join("");
   $("windScale").innerHTML=[[0,"<5"],[5,"5-10"],[10,"10-15"],[15,"15-20"],[20,"20-25"],[25,"25-33"],[34,"34+"]]
     .map(x=>`<span><i style="background:${windColor(x[0]+1)}"></i>${x[1]}</span>`).join("");
-  $("windNote").textContent=WIND_LEVELS[windLevel].note;
 }
 
-$("windBtn").onclick=()=>{S.wind.val=!S.wind.val;store.set("wind",S.wind.val);
-  $("sw-wind").checked=S.wind.val;S.wind.apply(S.wind.val);};
-$("windLevels").addEventListener("click",e=>{
-  const b=e.target.closest(".chip"); if(!b)return;
-  windLevel=+b.dataset.lv; windRenderLegend(); windLoad(true);
-});
+/* --- double-tap the map for the wind at that exact spot --- */
+function windProbeHide(){ windProbeTok++; const e=$("windProbe"); if(e)e.style.display="none"; }
+async function windProbe(latlng,pt){
+  if(!S.wind||!S.wind.val)return;
+  const box=$("windProbe"), tok=++windProbeTok;
+  const est=windSample(pt.x,pt.y);
+  const coords=Math.abs(latlng.lat).toFixed(3)+(latlng.lat<0?"S":"N")+" "+
+               Math.abs(latlng.lng).toFixed(3)+(latlng.lng<0?"W":"E");
+  const render=(sp,dir,gst,exact)=>{
+    box.innerHTML=`<div class="wpH">WIND HERE${exact?"":" · EST"}</div>`+
+      `<div class="wpV" style="color:${windColor(sp)}">${sp.toFixed(1)}<small>KT</small></div>`+
+      `<div class="wpD">${dir==null?"—":dirTxt(dir)+" "+Math.round(dir)+"°"}</div>`+
+      (gst!=null?`<div class="wpG">GUSTING ${Math.round(gst)} KT</div>`:"")+
+      `<div class="wpC">${coords}</div>`;
+    box.style.display="block";
+    const w=box.offsetWidth||140, h=box.offsetHeight||96, size=map.getSize();
+    box.style.left=Math.max(8,Math.min(size.x-w-8,pt.x-w/2))+"px";
+    box.style.top =Math.max(8,Math.min(size.y-h-8,pt.y-h-16))+"px";
+  };
+  if(est)render(est.s,(Math.atan2(-est.dx,est.dy)*180/Math.PI+360)%360,null,false);
+  else{ box.innerHTML='<div class="wpH">WIND HERE</div><div class="wpD">Reading…</div>'; box.style.display="block"; }
+  try{
+    const j=await jget("https://api.open-meteo.com/v1/forecast?latitude="+latlng.lat.toFixed(4)+
+      "&longitude="+latlng.lng.toFixed(4)+
+      "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&timezone=UTC");
+    if(tok!==windProbeTok)return;                 /* dismissed or superseded while in flight */
+    const c=(Array.isArray(j)?j[0]:j).current;
+    if(c&&c.wind_speed_10m!=null)render(c.wind_speed_10m,c.wind_direction_10m,c.wind_gusts_10m,true);
+  }catch(e){ /* the interpolated estimate stays on screen */ }
+}
+
+(function(){
+  const btn=$("windBtn");
+  const down=()=>{ windHeld=false; clearTimeout(windHoldT);
+    windHoldT=setTimeout(()=>{ windHeld=true; windLegendShow(); },300); };
+  const up=e=>{ clearTimeout(windHoldT); windLegendHide();
+    if(windHeld){ windHeld=false; if(e&&e.preventDefault)e.preventDefault(); return; }
+    S.wind.val=!S.wind.val; store.set("wind",S.wind.val);
+    $("sw-wind").checked=S.wind.val; S.wind.apply(S.wind.val); };
+  btn.addEventListener("pointerdown",down);
+  btn.addEventListener("pointerup",up);
+  btn.addEventListener("pointercancel",()=>{clearTimeout(windHoldT);windLegendHide();windHeld=false;});
+  btn.addEventListener("pointerleave",()=>{clearTimeout(windHoldT);windLegendHide();});
+  btn.addEventListener("contextmenu",e=>e.preventDefault());
+})();
+/* double-tap probes the exact spot; any other gesture clears it */
+map.on("dblclick",e=>{ if(S.wind&&S.wind.val)windProbe(e.latlng,e.containerPoint); });
+map.on("click movestart zoomstart",windProbeHide);
 /* the canvas lives in map space: park it during a gesture, rebuild after */
 map.on("movestart zoomstart",()=>{ if(S.wind&&S.wind.val){windStop();windClear();} });
 map.on("moveend",()=>{
   if(!S.wind||!S.wind.val)return;
   windEnsureCanvas(); windPlaceCanvas(); windClear();
   clearTimeout(windMoveT);
-  windMoveT=setTimeout(()=>{ if(windField){windBuildFieldFromCache();} windLoad(false); },420);
+  windMoveT=setTimeout(()=>{ if(windLastGrid)windBuildFieldFromCache(); windLoad(false); },420);
 });
-let windMoveT=null;
 /* after a pan the old grid still covers most of the new view, so re-project it
    immediately and let the network catch up -- avoids a blank pause */
-let windLastGrid=null;
-function windBuildFieldFromCache(){ if(windLastGrid)windBuildField.apply(null,windLastGrid); windSeed(); windStop(); windTick(); }
+function windBuildFieldFromCache(){
+  if(!windLastGrid)return;
+  windBuildField.apply(null,windLastGrid); windSeed(); windStop(); windTick();
+}
 windRenderLegend();
 
 /* ================= BOOT ================= */
