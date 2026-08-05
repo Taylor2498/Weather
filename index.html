@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.9</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v5.0</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -2439,7 +2439,23 @@ function windGridSize(){
    or on a fork — every fetch fails quietly and the app behaves exactly as it did
    in v4.8, viewport grids only. */
 const WIND_GFILE="wind-global", WIND_GTTL=3600000;
-let windGlobal=null, windGAt=0, windGNext=0, windGLoading=false;
+let windGlobal=null, windGAt=0, windGNext=0, windGMiss=0, windGLoading=false;
+
+/* Pulled OUT of windLoad on purpose. v4.9 only reached for the global file part
+   way through a viewport fetch, which meant that once Open-Meteo started failing
+   and windLoad began returning early on its cooldown, the global field was never
+   requested at all -- it went missing at exactly the moment it was the only
+   source left. It is a static file; it has nothing to do with the API's health. */
+function windEnsureGlobal(){
+  if(!S.wind||!S.wind.val)return;
+  if(windGlobal&&Date.now()-windGAt<WIND_GTTL)return;
+  windLoadGlobalFile().then(g=>{
+    if(g&&S.wind&&S.wind.val){
+      windEnsureCanvas(); windPlaceCanvas();
+      windBuildField(); windSeed(); windStop(); windTick(); windUpdateLegend();
+    }
+  }).catch(()=>{});
+}
 
 function windGlobalSpec(){
   return windGlobal?{grid:windGlobal.grid,
@@ -2471,10 +2487,13 @@ async function windLoadGlobalFile(){
       lo1:m.lo1, la1:m.la1,
       lo2:m.lo1+(m.nx-1)*m.dx, la2:m.la1+(m.ny-1)*m.dy,
       dx:m.dx, cycle:m.cycle};
-    windGAt=Date.now(); windGNext=0;
+    windGAt=Date.now(); windGNext=0; windGMiss=0;
     return windGlobal;
   }catch(e){
-    windGNext=Date.now()+900000;                /* not published yet - look again later */
+    /* A miss usually means CI has not published yet, or Pages is still pushing
+       the commit to its CDN - minutes, not hours. 90s, doubling to 10 min. */
+    windGMiss=Math.min(600000,(windGMiss||45000)*2);
+    windGNext=Date.now()+windGMiss;
     return null;
   }finally{ windGLoading=false; }
 }
@@ -2483,13 +2502,16 @@ function windBackoff(){
   windFails++;
   const wait=Math.min(300000,15000*Math.pow(2,windFails-1));
   windCool=Date.now()+wait;
-  $("windSt").textContent="WIND PAUSED · RETRY IN "+Math.round(wait/1000)+"S";
+  $("windSt").textContent=(windGlobal
+    ? "GFS "+windGlobal.dx+"° · LOCAL DETAIL PAUSED "+Math.round(wait/1000)+"S"
+    : "WIND PAUSED · RETRY IN "+Math.round(wait/1000)+"S");
   clearTimeout(windRetryT);
   windRetryT=setTimeout(()=>{ if(S.wind&&S.wind.val)windLoad(true); },wait+250);
 }
 
 async function windLoad(force){
   if(!S.wind||!S.wind.val||!mapVisible())return;
+  windEnsureGlobal();                            /* independent of the API's state */
   if(Date.now()<windCool)return;                 /* backing off after a failure */
   const b=map.getBounds(), z=map.getZoom();
   const key=[z,b.getSouth().toFixed(2),b.getWest().toFixed(2),
@@ -2525,14 +2547,6 @@ async function windLoad(force){
        detail, where a viewport sits inside one model domain anyway.
        No &hourly= any more: current= alone halves the variables in the request,
        and variables are half of what a request costs. */
-    /* Wide view: the baked GFS field is what fills the screen beyond the
-       viewport grid. It is one cached fetch, not a metered API call, so there is
-       no reason not to have it. */
-    if(E0-W0>20&&!windGlobal){
-      windLoadGlobalFile().then(g=>{
-        if(g&&S.wind&&S.wind.val){ windBuildField(); windSeed(); windStop(); windTick(); windUpdateLegend(); }
-      });
-    }
     const grid=await windFetchGrid(lats,lons,z<=7?"gfs_seamless":"best_match",tok,false);
     if(!grid)return;
     const good=grid.filter(Boolean);
@@ -2541,7 +2555,6 @@ async function windLoad(force){
     windMean=good.reduce((a,x)=>a+x.s,0)/good.length;
     windKey=key; windAt=Date.now(); windFails=0; windCool=0;
     windFine={grid:grid,S0:S0,N0:N0,W0:W0,E0:E0,COLS:COLS,ROWS:ROWS};
-    windMode=windGlobal?("GFS "+windGlobal.dx+"°"):(COLS+"x"+ROWS);
     windBuildField();
     windUpdateLegend();
     windSeed(); windStop(); windTick();
@@ -2592,6 +2605,13 @@ function windBuildField(){
     else f[o+2]=-1;                                      /* -1 marks no data */
   }
   windField={f:f,cols:cols,rows:rows,w:size.x,h:size.y};
+  /* Peak/mean used to come from the viewport grid, so with only the global field
+     loaded the legend read 0 KT. Take them from what is actually on screen. */
+  let n=0,sum=0,mx=0;
+  for(let k=2;k<f.length;k+=3){ const v=f[k]; if(v<0)continue; n++; sum+=v; if(v>mx)mx=v; }
+  windPeak=mx; windMean=n?sum/n:0;
+  windMode = windFine ? (windGlobal?"LOCAL+GFS":"LOCAL "+cols+"px")
+                      : (windGlobal?("GFS "+windGlobal.dx+"°"):"");
 }
 function windSeed(){
   if(!windField)return;
@@ -2666,6 +2686,7 @@ function windSetVisible(v){
      biggest request of the lot and the least urgent, so it waits its turn. */
   const age=Date.now()-BOOT_AT;
   windFails=0; windCool=0;
+  setTimeout(windEnsureGlobal,age<2000?2000-age:0);
   setTimeout(()=>{ if(S.wind&&S.wind.val)windLoad(true); },age<3500?3500-age:0);
 }
 
@@ -2748,7 +2769,7 @@ map.on("moveend",()=>{
      global base always covers the new view -- then let the network refine it. */
   windBuildField(); windSeed(); windStop(); windTick();
   clearTimeout(windMoveT);
-  windMoveT=setTimeout(()=>windLoad(false),420);
+  windMoveT=setTimeout(()=>{ windEnsureGlobal(); windLoad(false); },420);
 });
 windRenderLegend();
 try{ localStorage.removeItem("obwx:windglobal"); }catch(e){}   /* v4.7 leftovers */
