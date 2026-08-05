@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.2</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v4.3</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -2130,10 +2130,19 @@ async function windLoad(force){
     if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
     /* current= is the freshest surface nowcast; hourly is the fallback if a
        model doesn't publish a current block for that point. */
+    /* cell_selection=nearest: without it Open-Meteo picks the model cell with the
+       best ELEVATION match, not the closest one -- neighbouring grid slots ended up
+       holding wind from displaced cells and the interpolated field grew fake eddies.
+       models= pinned at wide zooms: best_match stitches HRRR (CONUS) against GFS and
+       the HRRR domain edge crossing the Gulf drew a phantom convergence line. One
+       seamless family for wide views; best_match returns at z>=8 for the 3 km detail,
+       where a viewport sits inside a single model domain anyway. */
+    const model=z<=7?"gfs_seamless":"best_match";
     const j=await jget("https://api.open-meteo.com/v1/forecast"+
       "?latitude="+lats.join(",")+"&longitude="+lons.join(",")+
       "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
       "&hourly=wind_speed_10m,wind_direction_10m&forecast_hours=2"+
+      "&models="+model+"&cell_selection=nearest"+
       "&wind_speed_unit=kn&timezone=UTC");
     if(tok!==windTok)return;
     const arr=Array.isArray(j)?j:[j], now=Date.now();
@@ -2292,7 +2301,8 @@ async function windProbe(latlng,pt){
   try{
     const j=await jget("https://api.open-meteo.com/v1/forecast?latitude="+latlng.lat.toFixed(4)+
       "&longitude="+latlng.lng.toFixed(4)+
-      "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&timezone=UTC");
+      "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
+      "&cell_selection=nearest&wind_speed_unit=kn&timezone=UTC");
     if(tok!==windProbeTok)return;                 /* dismissed or superseded while in flight */
     const c=(Array.isArray(j)?j[0]:j).current;
     if(c&&c.wind_speed_10m!=null)render(c.wind_speed_10m,c.wind_direction_10m,c.wind_gusts_10m,true);
@@ -2313,9 +2323,21 @@ async function windProbe(latlng,pt){
   btn.addEventListener("pointerleave",()=>{clearTimeout(windHoldT);windLegendHide();});
   btn.addEventListener("contextmenu",e=>e.preventDefault());
 })();
-/* double-tap probes the exact spot; any other gesture clears it */
-map.on("dblclick",e=>{ if(S.wind&&S.wind.val)windProbe(e.latlng,e.containerPoint); });
+/* double-tap probes the exact spot; any other gesture clears it.
+   iOS Safari does not fire dblclick on the map element (Leaflet 1.8+ dropped its own
+   tap synthesiser), so the probe never triggered on the phone. Detect the tap pair
+   from Leaflet's click events instead -- desktop double-clicks emit two clicks too,
+   so one path covers both. Registered AFTER windProbeHide so the second tap's hide
+   runs first and the probe it opens survives. */
 map.on("click movestart zoomstart",windProbeHide);
+let wpTapT=0, wpTapX=0, wpTapY=0;
+map.on("click",e=>{
+  if(!S.wind||!S.wind.val)return;
+  const t=Date.now(), p=e.containerPoint;
+  if(t-wpTapT<400 && Math.hypot(p.x-wpTapX,p.y-wpTapY)<40){
+    wpTapT=0; windProbe(e.latlng,p);
+  }else{ wpTapT=t; wpTapX=p.x; wpTapY=p.y; }
+});
 /* the canvas lives in map space: park it during a gesture, rebuild after */
 map.on("movestart zoomstart",()=>{ if(S.wind&&S.wind.val){windStop();windClear();} });
 map.on("moveend",()=>{
