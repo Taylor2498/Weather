@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.7</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v4.8</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -915,6 +915,18 @@ async function timedFetch(u,ms){
 async function jget(u){const r=await timedFetch(u);if(!r.ok)throw new Error(r.status);return r.json();}
 async function tget(u){const r=await timedFetch(u);if(!r.ok)throw new Error(r.status);return r.text();}
 const stamp=el=>$(el).textContent="UPD "+new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
+const BOOT_AT=Date.now();
+/* "retrying" used to be a lie: the message said so but nothing ran again until the
+   next 10-minute tick. These feeds now actually climb a backoff ladder, so a
+   transient rate-limit or a dead cell heals in seconds instead of minutes. */
+const RETRY={};
+function retryLater(key,fn,base){
+  RETRY[key]=(RETRY[key]||0)+1;
+  const d=Math.min(300000,(base||12000)*Math.pow(2,RETRY[key]-1));
+  setTimeout(()=>{try{const r=fn();if(r&&r.catch)r.catch(()=>{});}catch(e){}},d);
+  return d;
+}
+function retryClear(key){ RETRY[key]=0; }
 
 /* v3.9 — NWS shortForecast → emblem. Order matters: tropical > thunder > chance > rain > fog > wind > clouds > clear */
 function wxEmoji(sf,day){
@@ -947,8 +959,12 @@ async function loadNow(){
       <div class="nw"><div class="k">PRESSURE</div><div class="v">${fmt(c.pressure_msl,1)}<small>MB</small></div><div class="s c">MSL</div></div>
       <div class="nw"><div class="k">HUMIDITY</div><div class="v">${c.relative_humidity_2m}<small>%</small></div><div class="s">RH 2M</div></div>
       <div class="nw"><div class="k">PRECIP</div><div class="v">${fmt(c.precipitation,2)}<small>IN</small></div><div class="s">LAST HOUR</div></div>`;
-    stamp("nowSt");$("upd").textContent="LIVE";
-  }catch(e){$("nowGrid").innerHTML=`<div class="err">conditions feed unavailable — retrying</div>`;}
+    stamp("nowSt");$("upd").textContent="LIVE";retryClear("now");
+  }catch(e){
+    const d=retryLater("now",loadNow);
+    $("upd").textContent="RETRY "+Math.round(d/1000)+"S";
+    $("nowGrid").innerHTML=`<div class="err">conditions feed unavailable — retrying in ${Math.round(d/1000)}s</div>`;
+  }
 }
 
 function pairDaily(per){
@@ -2236,8 +2252,11 @@ async function loadFish(){
       <tr><td>Seas (nearshore model)</td><td class="r">${seas!=null?fmt(seas)+" FT":"—"}</td><td class="r">${seas!=null&&seas<3?"Small boat OK":"Check the pass first"}</td></tr>`;
     fishCtx={sst:sst,wind:wind};
     safe(renderSpecies); safe(renderSeasonCal); safe(drawRibbon);
-    stamp("fishSt");
-  }catch(e){$("verdict").innerHTML='<div class="err">Fishing data unavailable — retrying.</div>';}
+    stamp("fishSt"); retryClear("fish");
+  }catch(e){
+    const d=retryLater("fish",loadFish);
+    $("verdict").innerHTML='<div class="err">Fishing data unavailable — retrying in '+Math.round(d/1000)+'s.</div>';
+  }
 }
 
 /* species list — harvest status first, bite second, recomputed from the clock */
@@ -2317,15 +2336,6 @@ function windColor(kt){
 }
 /* Grid density follows zoom. Zoomed out, a coarse grid is the accuracy limit;
    zoomed in, the model itself is, so fewer points do the same job for less. */
-/* Density is what buys the curl. A 10-degree grid can only draw the zonal mean --
-   the westerlies came out as flat green stripes with no eddies in them. Open-Meteo
-   caps one request at 1000 coordinates, but the real ceiling is URL length, so the
-   point list is split into WIND_CHUNK-sized requests fired in parallel and
-   concatenated in order. Roughly doubles the anchor count at every zoom. */
-function windGridSize(){
-  const z=map.getZoom();
-  return z<=4?[34,26]:z<=7?[30,24]:z<=11?[26,20]:[20,15];
-}
 function windEnsureCanvas(){
   if(windCv)return;
   windCv=document.createElement("canvas");
@@ -2396,133 +2406,92 @@ async function windFetchGrid(lats,lons,model,tok,hourlyFallback){
   return arr.map(o=>windDecodePoint(o,now));
 }
 
-/* ---------------- the global tier ----------------
-   A viewport grid cannot cover the world. 1000 coordinates spread over 360x170
-   degrees is a 10-degree mesh, which resolves the zonal mean and nothing else —
-   that is why the world view came out as flat stripes with no eddies in them.
-   Zoomed that far out we switch to a FIXED 5-degree global mesh instead
-   (73 x 35 = 2555 points). Fixed is the whole point: it does not move when you
-   pan, so it is fetched once an hour, cached in localStorage, and every pan and
-   zoom at world scale after that is free. Dropping the hourly fallback keeps the
-   response near 500 KB.
-   The seam is covered on purpose — column 0 is -180 and column 72 is +180, the
-   same meridian twice, so interpolation wraps continuously across the dateline. */
-const WIND_GSTEP=5, WIND_GTTL=3600000, WIND_GKEY="obwx:windglobal";
-const WIND_GCOLS=Math.round(360/WIND_GSTEP)+1, WIND_GROWS=Math.round(170/WIND_GSTEP)+1;
-let windGlobal=null, windMode="";
+/* ---------------- why there is no global mesh any more ----------------
+   v4.5-v4.7 fetched a fixed 5-degree world grid (2555 coordinates) from
+   Open-Meteo once an hour. That looked right and was quietly fatal: Open-Meteo
+   weights a request by the number of LOCATIONS and VARIABLES in it, not by the
+   number of HTTP calls, so one world mesh counts as thousands of calls. It burned
+   the free quota within minutes, and once the quota was gone the API started
+   refusing everything — including the single-point requests behind the conditions
+   card and the fish verdict. That is what "SYNCING" forever and "Fishing data
+   unavailable" were: not bugs in those features, but the wind layer eating the
+   whole budget.
+   So: viewport only, one request, small. A true global field needs GFS decoded
+   server-side (see the GitHub Action note in the README) — it is not something a
+   point-forecast API should ever be asked for. */
+let windMode="", windFails=0, windCool=0, windRetryT=null;
+const WIND_BUDGET=320;          /* coordinates per request — the whole cost knob */
 
-function windGlobalUnpack(a){
-  const g=new Array(WIND_GCOLS*WIND_GROWS);
-  for(let i=0;i<g.length;i++){
-    const u=a[i*2], v=a[i*2+1], sp=Math.sqrt(u*u+v*v);
-    g[i]= sp>0 ? {u:u,v:v,s:sp,g:null} : null;
-  }
-  return g;
+/* Grid shape follows the viewport's aspect so points are not wasted: a tall phone
+   gets a tall grid. The budget, not the zoom, sets the count. */
+function windGridSize(){
+  const sz=map.getSize(), a=sz.x/Math.max(1,sz.y);
+  const cols=Math.max(10,Math.min(30,Math.round(Math.sqrt(WIND_BUDGET*a))));
+  const rows=Math.max(8,Math.min(34,Math.round(WIND_BUDGET/cols)));
+  return [cols,rows];
 }
-function windGlobalCacheRead(){
-  try{
-    const raw=localStorage.getItem(WIND_GKEY); if(!raw)return null;
-    const o=JSON.parse(raw);
-    if(!o||!o.t||!o.a||o.a.length!==WIND_GCOLS*WIND_GROWS*2)return null;
-    if(Date.now()-o.t>WIND_GTTL)return null;
-    return {grid:windGlobalUnpack(o.a),at:o.t};
-  }catch(e){return null;}
-}
-function windGlobalCacheWrite(grid){
-  try{
-    const a=new Array(grid.length*2);
-    for(let i=0;i<grid.length;i++){ const q=grid[i];
-      a[i*2]=q?+q.u.toFixed(1):0; a[i*2+1]=q?+q.v.toFixed(1):0; }
-    localStorage.setItem(WIND_GKEY,JSON.stringify({t:Date.now(),a:a}));
-  }catch(e){}   /* quota or private mode — memory cache still works */
-}
-async function windLoadGlobal(tok){
-  if(windGlobal&&Date.now()-windGlobal.at<WIND_GTTL)return windGlobal.grid;
-  const c=windGlobalCacheRead();
-  if(c){ windGlobal=c; return c.grid; }
-  if(windGBusy)return null;
-  windGBusy=true;
-  try{ return await windGlobalFetch(tok); }finally{ windGBusy=false; }
-}
-async function windGlobalFetch(tok){
-  const lats=[],lons=[];
-  for(let r=0;r<WIND_GROWS;r++)for(let c2=0;c2<WIND_GCOLS;c2++){
-    lats.push((-85+r*WIND_GSTEP).toFixed(2));
-    lons.push((-180+c2*WIND_GSTEP).toFixed(2));
-  }
-  const grid=await windFetchGrid(lats,lons,"gfs_seamless",tok,false);
-  if(!grid)return null;
-  windGlobal={grid:grid,at:Date.now()};
-  windGlobalCacheWrite(grid);
-  return grid;
-}
-/* Use the global mesh only where it is actually the finer of the two — that is,
-   once the viewport grid would be stretched past 5 degrees a cell. Everywhere
-   tighter than that the viewport request still wins, and by a lot. */
-function windUseGlobal(){
-  const b=map.getBounds(), g=windGridSize();
-  return (b.getEast()-b.getWest())/(g[0]-1) > WIND_GSTEP*0.9;
+function windGlobalSpec(){ return null; }   /* kept as the seam for a future global source */
+
+function windBackoff(){
+  windFails++;
+  const wait=Math.min(300000,15000*Math.pow(2,windFails-1));
+  windCool=Date.now()+wait;
+  $("windSt").textContent="WIND PAUSED · RETRY IN "+Math.round(wait/1000)+"S";
+  clearTimeout(windRetryT);
+  windRetryT=setTimeout(()=>{ if(S.wind&&S.wind.val)windLoad(true); },wait+250);
 }
 
 async function windLoad(force){
   if(!S.wind||!S.wind.val||!mapVisible())return;
-  const b=map.getBounds(), z=map.getZoom(), glob=windUseGlobal();
-  const key=glob?"GLOBAL":[z,b.getSouth().toFixed(2),b.getWest().toFixed(2),
+  if(Date.now()<windCool)return;                 /* backing off after a failure */
+  const b=map.getBounds(), z=map.getZoom();
+  const key=[z,b.getSouth().toFixed(2),b.getWest().toFixed(2),
              b.getNorth().toFixed(2),b.getEast().toFixed(2)].join("|");
-  if(!force&&key===windKey&&Date.now()-windAt<900000)return;
+  if(!force&&key===windKey&&Date.now()-windAt<1200000)return;
   /* A pinch-zoom fires several moveends. The first starts a fetch; every one
      after it used to hit windBusy and return, so the field stayed frozen on
-     whatever intermediate viewport happened to win the race — a small patch of
-     wind sitting in the middle of a zoomed-out map. Remember that a newer view
-     is waiting and re-run once the in-flight request lands. */
+     whatever intermediate viewport won the race. Remember that a newer view is
+     waiting and re-run once the in-flight request lands. */
   if(windBusy){ windPending=true; return; }
   windBusy=true;
   const tok=++windTok;
   $("windSt").textContent="LOADING…";
   try{
-    let grid,S0,N0,W0,E0,COLS,ROWS;
-    if(glob){
-      grid=await windLoadGlobal(tok);
-      if(!grid)return;
-      S0=-85; N0=85; W0=-180; E0=180; COLS=WIND_GCOLS; ROWS=WIND_GROWS;
-      windMode="GLOBAL "+WIND_GSTEP+"°";
-    }else{
-      const g=windGridSize(); COLS=g[0]; ROWS=g[1];
-      const padY=(b.getNorth()-b.getSouth())*0.1, padX=(b.getEast()-b.getWest())*0.1;
-      S0=Math.max(-85,b.getSouth()-padY); N0=Math.min(85,b.getNorth()+padY);
-      W0=b.getWest()-padX; E0=b.getEast()+padX;
-      const dLat=(N0-S0)/(ROWS-1), dLon=(E0-W0)/(COLS-1);
-      const dp=windCoordDp(Math.min(dLat,dLon));
-      const lats=[],lons=[];
-      for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
-        lats.push((S0+dLat*r).toFixed(dp));
-        lons.push(((((W0+dLon*c)+540)%360)-180).toFixed(dp));  /* normalise across the dateline */
-      }
-      if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
-      /* cell_selection=nearest: without it Open-Meteo picks the model cell with the
-         best ELEVATION match, not the closest one. models= pinned at wide zooms:
-         best_match stitches HRRR (CONUS) against GFS and the domain edge crossing
-         the Gulf drew a phantom convergence line. best_match returns at z>=8 for
-         the 3 km detail, where a viewport sits inside one model domain anyway. */
-      /* Zoomed out far enough that the next pinch could outrun a viewport
-         request — warm the global mesh so the field always has something that
-         covers the whole screen to fall back on. */
-      if(!windGlobal)windLoadGlobal(null).catch(()=>{});
-      grid=await windFetchGrid(lats,lons,z<=7?"gfs_seamless":"best_match",tok,true);
-      if(!grid)return;
-      windMode="";
+    const g=windGridSize(), COLS=g[0], ROWS=g[1];
+    const padY=(b.getNorth()-b.getSouth())*0.08, padX=(b.getEast()-b.getWest())*0.08;
+    const S0=Math.max(-85,b.getSouth()-padY), N0=Math.min(85,b.getNorth()+padY);
+    let W0=b.getWest()-padX, E0=b.getEast()+padX;
+    if(E0-W0>=359.5){ W0=-180; E0=180; }
+    const dLat=(N0-S0)/(ROWS-1), dLon=(E0-W0)/(COLS-1);
+    const dp=windCoordDp(Math.min(dLat,dLon));
+    const lats=[],lons=[];
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+      lats.push((S0+dLat*r).toFixed(dp));
+      lons.push(((((W0+dLon*c)+540)%360)-180).toFixed(dp));  /* normalise across the dateline */
     }
+    if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
+    /* cell_selection=nearest: without it Open-Meteo picks the model cell with the
+       best ELEVATION match, not the closest one, and neighbouring slots come back
+       holding wind from displaced cells. models= pinned at wide zooms because
+       best_match stitches HRRR against GFS and the domain edge drew a phantom
+       convergence line down the Gulf; best_match returns at z>=8 for the 3 km
+       detail, where a viewport sits inside one model domain anyway.
+       No &hourly= any more: current= alone halves the variables in the request,
+       and variables are half of what a request costs. */
+    const grid=await windFetchGrid(lats,lons,z<=7?"gfs_seamless":"best_match",tok,false);
+    if(!grid)return;
     const good=grid.filter(Boolean);
     if(good.length<grid.length*0.5)throw new Error("sparse grid");
     windPeak=Math.max.apply(null,good.map(x=>x.s));
     windMean=good.reduce((a,x)=>a+x.s,0)/good.length;
-    windKey=key; windAt=Date.now();
-    windFine=glob?null:{grid:grid,S0:S0,N0:N0,W0:W0,E0:E0,COLS:COLS,ROWS:ROWS};
+    windKey=key; windAt=Date.now(); windFails=0; windCool=0;
+    windFine={grid:grid,S0:S0,N0:N0,W0:W0,E0:E0,COLS:COLS,ROWS:ROWS};
+    windMode=COLS+"x"+ROWS;
     windBuildField();
     windUpdateLegend();
     windSeed(); windStop(); windTick();
   }catch(e){
-    if(tok===windTok)$("windSt").textContent="WIND DATA UNAVAILABLE HERE";
+    if(tok===windTok)windBackoff();
   }finally{
     windBusy=false;
     if(windPending){ windPending=false; setTimeout(()=>windLoad(false),0); }
@@ -2549,21 +2518,16 @@ function windGridSample(sp,lat,lng){
   for(let k=0;k<4;k++){ if(!q[k])continue; u+=q[k].u*wt[k]; v+=q[k].v*wt[k]; spd+=q[k].s*wt[k]; tw+=wt[k]; }
   return tw>0.01?{u:u/tw,v:v/tw,s:spd/tw}:null;
 }
-function windGlobalSpec(){
-  return windGlobal?{grid:windGlobal.grid,S0:-85,N0:85,W0:-180,E0:180,
-                     COLS:WIND_GCOLS,ROWS:WIND_GROWS}:null;
-}
-/* The field is COMPOSITED, and that is what makes zooming feel continuous: the
-   5-degree global mesh is the base everywhere, and the viewport grid paints over
-   it wherever it reaches. Zoomed out you get wind to every edge of the screen;
-   zoomed in the fine grid takes over and the global mesh is simply never sampled.
-   No tier switch, and no blank frames while a request is in flight. */
+/* Two-source by design even though only one source is wired up today: the fine
+   viewport grid is sampled first and anything coarser fills the gaps. When a real
+   global field exists (a GFS file baked by CI), it drops into windGlobalSpec and
+   world zoom works with no other change. */
 function windBuildField(){
   const size=map.getSize();
   const cols=Math.ceil(size.x/WIND_STEP)+1, rows=Math.ceil(size.y/WIND_STEP)+1;
   const f=new Float32Array(cols*rows*3);
   const G=windGlobalSpec();
-  if(!windFine&&!G){ windField=null; return; }
+  if(!windFine&&!G){ windField=null; return; }   /* nothing loaded yet */
   for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
     const ll=map.containerPointToLatLng([i*WIND_STEP,j*WIND_STEP]);
     const o=(j*cols+i)*3;
@@ -2642,12 +2606,12 @@ function windSetVisible(v){
   windEnsureCanvas(); windPlaceCanvas();
   windCv.style.display="";
   if(map.doubleClickZoom)map.doubleClickZoom.disable();   /* double-tap probes instead of zooming */
-  /* null token: the background global fetch is not tied to any one viewport
-     request, so a pan mid-flight must not discard it */
-  windLoadGlobal(null).then(g=>{
-    if(g&&S.wind&&S.wind.val){ windBuildField(); windSeed(); windStop(); windTick(); }
-  }).catch(()=>{});
-  windLoad(true);
+  /* Never race the boot loaders for the connection. On a cold start the
+     conditions, tide, buoy and fish feeds all fire at once; the wind grid is the
+     biggest request of the lot and the least urgent, so it waits its turn. */
+  const age=Date.now()-BOOT_AT;
+  windFails=0; windCool=0;
+  setTimeout(()=>{ if(S.wind&&S.wind.val)windLoad(true); },age<3500?3500-age:0);
 }
 
 /* --- hold the WIND button to peek at the key --- */
@@ -2732,6 +2696,7 @@ map.on("moveend",()=>{
   windMoveT=setTimeout(()=>windLoad(false),420);
 });
 windRenderLegend();
+try{ localStorage.removeItem("obwx:windglobal"); }catch(e){}   /* v4.7 leftovers */
 mapZoomFloor();
 
 /* ================= BOOT ================= */
@@ -2741,7 +2706,7 @@ safe(buildRadar); setInterval(()=>safe(buildRadar),300000);
 [loadNow,loadForecast,()=>loadTides().then(loadFish),loadBuoys,loadSwell,loadStorms,loadAlertPolys].forEach(safe);
 safe(()=>{if(S.me.val)locate(false);});
 setInterval(()=>{lastSync=Date.now();safe(loadNow);},600000);
-setInterval(()=>{if(S.wind&&S.wind.val)safe(()=>windLoad(true));},900000);
+setInterval(()=>{if(S.wind&&S.wind.val)safe(()=>windLoad(true));},1200000);
 setInterval(loadForecast,600000);
 setInterval(loadTides,900000);
 setInterval(()=>{loadBuoys();loadSwell();},1200000);
