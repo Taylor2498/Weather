@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.6</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v4.7</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -1533,19 +1533,18 @@ spanishmackerel:()=>FTAIL.lunate+
 
 /* TARPON — silver slab, lower jaw thrown upward, huge eye, trailing dorsal filament */
 tarpon:()=>FTAIL.lunate+
-  '<path d="M32 14 L40 3 L50 4 L55 12 L58 18 C50 10 40 10 32 14 Z" fill="FIN"/>'+
-  '<path d="M53 8 C59 16 64 25 67 35 L64 35 C60 24 55 15 50 10 Z" fill="FIN"/>'+
-  '<path d="M26 39 L28 50 L37 41 Z" fill="FIN"/>'+
-  '<path d="M42 39 L46 50 L57 39 Z" fill="FIN"/>'+
-  fBody(4,30,9,31,43,4.5)+
-  '<path d="M27 30 L41 39 L28 35 Z" fill="FIN2"/>'+
-  '<path d="M4 29 C7 24 9 20 9 15 L16 18 C15 24 13 28 10 31 Z" fill="FIN2"/>'+
-  '<g stroke="EDGE" stroke-width="1" fill="none" opacity=".8">'+
-  '<path d="M26 14 C24 21 24 31 26 39"/><path d="M36 11 C34 19 34 33 36 43"/>'+
-  '<path d="M46 12 C44 20 44 32 46 42"/><path d="M55 16 C53 22 53 31 55 38"/>'+
-  '<path d="M62 21 C61 25 61 29 62 33"/></g>'+
-  '<path d="M18 11 C15 18 14 24 14 29 C14 34 15 38 17 42" stroke="EDGE" stroke-width="1.2" fill="none"/>'+
-  '<circle cx="18" cy="21" r="4" fill="#f4f8fa"/><circle cx="17.2" cy="21" r="2.5" fill="#0a1420"/>',
+  '<path d="M33 16 L40 7 L49 8 L54 15 L56 20 C49 14 40 14 33 16 Z" fill="FIN"/>'+
+  '<path d="M52 11 C58 18 63 26 66 35 L63 35 C59 25 55 17 50 12 Z" fill="FIN"/>'+
+  '<path d="M28 36 L30 45 L38 38 Z" fill="FIN"/>'+
+  '<path d="M43 35 L47 45 L57 36 Z" fill="FIN"/>'+
+  fBody(3,31,14,32,38,4)+
+  '<path d="M28 28 L41 37 L29 33 Z" fill="FIN2"/>'+
+  '<path d="M3 28 C6 24 8 21 8 17 L15 20 C14 25 12 28 9 30 Z" fill="FIN2"/>'+
+  '<g stroke="EDGE" stroke-width=".9" fill="none" opacity=".75">'+
+  '<path d="M27 18 C25 23 25 30 27 35"/><path d="M37 16 C35 22 35 31 37 38"/>'+
+  '<path d="M47 17 C45 23 45 31 47 37"/><path d="M56 20 C55 24 55 30 56 34"/></g>'+
+  '<path d="M18 15 C15 20 14 24 14 28 C14 32 15 35 17 38" stroke="EDGE" stroke-width="1.2" fill="none"/>'+
+  '<circle cx="17" cy="21" r="3.5" fill="#f4f8fa"/><circle cx="16.3" cy="21" r="2.2" fill="#0a1420"/>',
 
 /* COBIA — long, broad flat head, isolated dorsal spines, dark band with a pale edge */
 cobia:()=>FTAIL.fork+
@@ -2309,7 +2308,7 @@ function renderSeasonCal(){
 const WIND_STEP=8, WIND_MAXAGE=160, WIND_MAXPTS=1200, WIND_CHUNK=280;
 let windCv=null, windCtx=null, windField=null, windParts=[], windRAF=null,
     windTok=0, windKey="", windAt=0, windBusy=false, windPeak=0, windMean=0,
-    windLastGrid=null, windMoveT=null, windProbeTok=0, windPending=false, windGBusy=false;
+    windFine=null, windMoveT=null, windProbeTok=0, windPending=false, windGBusy=false;
 
 /* knots -> ramp, marine units like the rest of the app */
 function windColor(kt){
@@ -2390,7 +2389,7 @@ async function windFetchGrid(lats,lons,model,tok,hourlyFallback){
       "&wind_speed_unit=kn&timezone=UTC"));
   }
   const parts=await Promise.all(reqs);
-  if(tok!==windTok)return null;
+  if(tok!==null&&tok!==windTok)return null;
   const arr=[], now=Date.now();
   parts.forEach(p=>{ (Array.isArray(p)?p:[p]).forEach(o=>arr.push(o)); });
   if(arr.length!==lats.length)throw new Error("grid length mismatch");
@@ -2508,7 +2507,7 @@ async function windLoad(force){
       /* Zoomed out far enough that the next pinch could outrun a viewport
          request — warm the global mesh so the field always has something that
          covers the whole screen to fall back on. */
-      if(E0-W0>25)windLoadGlobal(tok).catch(()=>{});
+      if(!windGlobal)windLoadGlobal(null).catch(()=>{});
       grid=await windFetchGrid(lats,lons,z<=7?"gfs_seamless":"best_match",tok,true);
       if(!grid)return;
       windMode="";
@@ -2518,8 +2517,8 @@ async function windLoad(force){
     windPeak=Math.max.apply(null,good.map(x=>x.s));
     windMean=good.reduce((a,x)=>a+x.s,0)/good.length;
     windKey=key; windAt=Date.now();
-    windLastGrid=[grid,S0,N0,W0,E0,COLS,ROWS];
-    windBuildField.apply(null,windLastGrid);
+    windFine=glob?null:{grid:grid,S0:S0,N0:N0,W0:W0,E0:E0,COLS:COLS,ROWS:ROWS};
+    windBuildField();
     windUpdateLegend();
     windSeed(); windStop(); windTick();
   }catch(e){
@@ -2531,29 +2530,47 @@ async function windLoad(force){
 }
 
 /* --- bilinear the coarse grid into a screen-space field, once per view --- */
-function windBuildField(grid,S0,N0,W0,E0,COLS,ROWS){
+/* Bilinear a coarse grid at one lat/lon. Returns null outside the grid so the
+   caller can fall through to a coarser source. */
+function windGridSample(sp,lat,lng){
+  if(!sp)return null;
+  if(lat<sp.S0||lat>sp.N0)return null;
+  let L=lng;                                          /* unwrap onto the grid's span */
+  while(L<sp.W0)L+=360; while(L>sp.W0+360)L-=360;
+  if(L>sp.E0)return null;
+  const gx=(L-sp.W0)/(sp.E0-sp.W0)*(sp.COLS-1), gy=(lat-sp.S0)/(sp.N0-sp.S0)*(sp.ROWS-1);
+  const x0=Math.floor(gx), y0=Math.floor(gy), fx=gx-x0, fy=gy-y0;
+  /* No clamping at the edges. A clamped edge repeats the last row forever, which
+     is what used to smear wind across the black canvas above the map. */
+  const at=(c,r)=>(c<0||r<0||c>=sp.COLS||r>=sp.ROWS)?null:sp.grid[r*sp.COLS+c];
+  const q=[at(x0,y0),at(x0+1,y0),at(x0,y0+1),at(x0+1,y0+1)];
+  const wt=[(1-fx)*(1-fy),fx*(1-fy),(1-fx)*fy,fx*fy];
+  let u=0,v=0,spd=0,tw=0;
+  for(let k=0;k<4;k++){ if(!q[k])continue; u+=q[k].u*wt[k]; v+=q[k].v*wt[k]; spd+=q[k].s*wt[k]; tw+=wt[k]; }
+  return tw>0.01?{u:u/tw,v:v/tw,s:spd/tw}:null;
+}
+function windGlobalSpec(){
+  return windGlobal?{grid:windGlobal.grid,S0:-85,N0:85,W0:-180,E0:180,
+                     COLS:WIND_GCOLS,ROWS:WIND_GROWS}:null;
+}
+/* The field is COMPOSITED, and that is what makes zooming feel continuous: the
+   5-degree global mesh is the base everywhere, and the viewport grid paints over
+   it wherever it reaches. Zoomed out you get wind to every edge of the screen;
+   zoomed in the fine grid takes over and the global mesh is simply never sampled.
+   No tier switch, and no blank frames while a request is in flight. */
+function windBuildField(){
   const size=map.getSize();
   const cols=Math.ceil(size.x/WIND_STEP)+1, rows=Math.ceil(size.y/WIND_STEP)+1;
   const f=new Float32Array(cols*rows*3);
-  /* No clamping. Clamped edges repeated the top grid row forever, which is why
-     wind blew across the black canvas above the map at world zoom. Out of range
-     now returns null and the cell ends up flagged as no-data. */
-  const at=(c,r)=>(c<0||r<0||c>=COLS||r>=ROWS)?null:grid[r*COLS+c];
+  const G=windGlobalSpec();
+  if(!windFine&&!G){ windField=null; return; }
   for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
     const ll=map.containerPointToLatLng([i*WIND_STEP,j*WIND_STEP]);
-    const o0=(j*cols+i)*3;
-    if(!(ll.lat>=S0&&ll.lat<=N0)||Math.abs(ll.lat)>85.06){ f[o0+2]=-1; continue; }
-    let lng=ll.lng;                                  /* unwrap onto the grid's span */
-    while(lng<W0)lng+=360; while(lng>W0+360)lng-=360;
-    const gx=(lng-W0)/(E0-W0)*(COLS-1), gy=(ll.lat-S0)/(N0-S0)*(ROWS-1);
-    const x0=Math.floor(gx), y0=Math.floor(gy), fx=gx-x0, fy=gy-y0;
-    const q=[at(x0,y0),at(x0+1,y0),at(x0,y0+1),at(x0+1,y0+1)];
-    const wt=[(1-fx)*(1-fy),fx*(1-fy),(1-fx)*fy,fx*fy];
-    let u=0,v=0,s=0,tw=0;
-    for(let k=0;k<4;k++){ if(!q[k])continue; u+=q[k].u*wt[k]; v+=q[k].v*wt[k]; s+=q[k].s*wt[k]; tw+=wt[k]; }
     const o=(j*cols+i)*3;
-    if(tw>0.01){ f[o]=u/tw; f[o+1]=-v/tw; f[o+2]=s/tw; }   /* screen y grows downward */
-    else f[o+2]=-1;                                        /* -1 marks no data */
+    if(Math.abs(ll.lat)>85.06){ f[o+2]=-1; continue; }   /* off the top of the world */
+    const q=windGridSample(windFine,ll.lat,ll.lng)||windGridSample(G,ll.lat,ll.lng);
+    if(q){ f[o]=q.u; f[o+1]=-q.v; f[o+2]=q.s; }          /* screen y grows downward */
+    else f[o+2]=-1;                                      /* -1 marks no data */
   }
   windField={f:f,cols:cols,rows:rows,w:size.x,h:size.y};
 }
@@ -2625,6 +2642,11 @@ function windSetVisible(v){
   windEnsureCanvas(); windPlaceCanvas();
   windCv.style.display="";
   if(map.doubleClickZoom)map.doubleClickZoom.disable();   /* double-tap probes instead of zooming */
+  /* null token: the background global fetch is not tied to any one viewport
+     request, so a pan mid-flight must not discard it */
+  windLoadGlobal(null).then(g=>{
+    if(g&&S.wind&&S.wind.val){ windBuildField(); windSeed(); windStop(); windTick(); }
+  }).catch(()=>{});
   windLoad(true);
 }
 
@@ -2703,27 +2725,12 @@ map.on("movestart zoomstart",()=>{ if(S.wind&&S.wind.val){windStop();windClear()
 map.on("moveend",()=>{
   if(!S.wind||!S.wind.val)return;
   windEnsureCanvas(); windPlaceCanvas(); windClear();
+  /* Reproject what we already have straight away -- it costs nothing and the
+     global base always covers the new view -- then let the network refine it. */
+  windBuildField(); windSeed(); windStop(); windTick();
   clearTimeout(windMoveT);
-  windMoveT=setTimeout(()=>{ if(windLastGrid)windBuildFieldFromCache(); windLoad(false); },420);
+  windMoveT=setTimeout(()=>windLoad(false),420);
 });
-/* after a pan the old grid still covers most of the new view, so re-project it
-   immediately and let the network catch up -- avoids a blank pause */
-function windBuildFieldFromCache(){
-  /* The cached grid only covers the viewport it was fetched for. After a big
-     zoom-out most of the screen falls outside it, which is why the wind used to
-     shrink to a patch over the Gulf. If the new view runs past the cached grid
-     and the global mesh is in hand, draw from the global mesh instead. */
-  let g=windLastGrid;
-  if(g){
-    const b=map.getBounds();
-    const covered=b.getSouth()>=g[1]&&b.getNorth()<=g[2]&&b.getWest()>=g[3]&&b.getEast()<=g[4];
-    if(!covered&&windGlobal)g=[windGlobal.grid,-85,85,-180,180,WIND_GCOLS,WIND_GROWS];
-  }else if(windGlobal){
-    g=[windGlobal.grid,-85,85,-180,180,WIND_GCOLS,WIND_GROWS];
-  }
-  if(!g)return;
-  windBuildField.apply(null,g); windSeed(); windStop(); windTick();
-}
 windRenderLegend();
 mapZoomFloor();
 
@@ -2748,7 +2755,8 @@ addEventListener("resize",()=>{
   clearTimeout(rsz);
   rsz=setTimeout(()=>{if(tideCache)drawTide.apply(null,tideCache);drawRibbon();
     map.invalidateSize(); mapZoomFloor();
-    if(S.wind&&S.wind.val){windEnsureCanvas();windPlaceCanvas();windBuildFieldFromCache();}},140);
+    if(S.wind&&S.wind.val){windEnsureCanvas();windPlaceCanvas();
+      windBuildField();windSeed();windStop();windTick();}},140);
 });
 /* keep the clock honest and stop burning cycles in the background */
 document.addEventListener("visibilitychange",()=>{
