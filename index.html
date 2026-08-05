@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v4.4</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v4.5</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -2085,7 +2085,7 @@ function renderSeasonCal(){
 
    v4.2: surface only. Spending the whole request budget on one level buys a much
    denser grid (up to 476 points against the old 192) and room for gusts. */
-const WIND_STEP=8, WIND_MAXAGE=160, WIND_MAXPTS=1200, WIND_CHUNK=350;
+const WIND_STEP=8, WIND_MAXAGE=160, WIND_MAXPTS=1200, WIND_CHUNK=280;
 let windCv=null, windCtx=null, windField=null, windParts=[], windRAF=null,
     windTok=0, windKey="", windAt=0, windBusy=false, windPeak=0, windMean=0,
     windLastGrid=null, windMoveT=null, windProbeTok=0;
@@ -2123,11 +2123,126 @@ function windPlaceCanvas(){
 function windStop(){ if(windRAF!=null){cancelAnimationFrame(windRAF);windRAF=null;} }
 function windClear(){ if(windCtx&&windCv)windCtx.clearRect(0,0,windCv.width,windCv.height); }
 
-/* --- one grid covering the current viewport --- */
+/* --- one Open-Meteo point -> one vector (shared by both tiers) --- */
+function windDecodePoint(o,now){
+  let sp=null,dir=null,gst=null;
+  const cur=o&&o.current;
+  if(cur&&cur.wind_speed_10m!=null&&cur.wind_direction_10m!=null){
+    sp=cur.wind_speed_10m; dir=cur.wind_direction_10m; gst=cur.wind_gusts_10m;
+  }else{
+    const h=o&&o.hourly;
+    if(h&&h.wind_speed_10m&&h.wind_speed_10m.length){
+      let bi=0,bd=Infinity;
+      (h.time||[]).forEach((t,i)=>{
+        const d=Math.abs(new Date(t+(/Z|[+-]\d\d:?\d\d$/.test(t)?"":"Z"))-now);
+        if(d<bd&&h.wind_speed_10m[i]!=null){bd=d;bi=i;}
+      });
+      sp=h.wind_speed_10m[bi]; dir=h.wind_direction_10m?h.wind_direction_10m[bi]:null;
+    }
+  }
+  if(sp==null||dir==null)return null;
+  const r=dir*Math.PI/180;
+  return {u:-sp*Math.sin(r), v:-sp*Math.cos(r), s:sp, g:gst};  /* direction is where it comes FROM */
+}
+
+/* Coordinate precision has to follow grid SPACING, not zoom. Rounding coordinates
+   coarser than the spacing quantises neighbouring request points onto the same
+   model cell: pairs of columns come back byte-identical, then jump a whole cell,
+   and bilinear over that staircase grows a regular lattice of false convergence
+   centres — the pinwheels. One digit finer than the spacing keeps the error under
+   about a tenth of a cell. */
+function windCoordDp(spacing){
+  return Math.max(2,Math.min(5,Math.ceil(-Math.log10(Math.max(spacing,1e-5)))+1));
+}
+
+/* Open-Meteo caps a request at 1000 coordinates and, in practice, URL length caps
+   it lower — so a point list goes out as parallel chunks and comes back in order. */
+async function windFetchGrid(lats,lons,model,tok,hourlyFallback){
+  const reqs=[];
+  for(let i0=0;i0<lats.length;i0+=WIND_CHUNK){
+    const la=lats.slice(i0,i0+WIND_CHUNK), lo=lons.slice(i0,i0+WIND_CHUNK);
+    reqs.push(jget("https://api.open-meteo.com/v1/forecast"+
+      "?latitude="+la.join(",")+"&longitude="+lo.join(",")+
+      "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
+      (hourlyFallback?"&hourly=wind_speed_10m,wind_direction_10m&forecast_hours=2":"")+
+      "&models="+model+"&cell_selection=nearest"+
+      "&wind_speed_unit=kn&timezone=UTC"));
+  }
+  const parts=await Promise.all(reqs);
+  if(tok!==windTok)return null;
+  const arr=[], now=Date.now();
+  parts.forEach(p=>{ (Array.isArray(p)?p:[p]).forEach(o=>arr.push(o)); });
+  if(arr.length!==lats.length)throw new Error("grid length mismatch");
+  return arr.map(o=>windDecodePoint(o,now));
+}
+
+/* ---------------- the global tier ----------------
+   A viewport grid cannot cover the world. 1000 coordinates spread over 360x170
+   degrees is a 10-degree mesh, which resolves the zonal mean and nothing else —
+   that is why the world view came out as flat stripes with no eddies in them.
+   Zoomed that far out we switch to a FIXED 5-degree global mesh instead
+   (73 x 35 = 2555 points). Fixed is the whole point: it does not move when you
+   pan, so it is fetched once an hour, cached in localStorage, and every pan and
+   zoom at world scale after that is free. Dropping the hourly fallback keeps the
+   response near 500 KB.
+   The seam is covered on purpose — column 0 is -180 and column 72 is +180, the
+   same meridian twice, so interpolation wraps continuously across the dateline. */
+const WIND_GSTEP=5, WIND_GTTL=3600000, WIND_GKEY="obwx:windglobal";
+const WIND_GCOLS=Math.round(360/WIND_GSTEP)+1, WIND_GROWS=Math.round(170/WIND_GSTEP)+1;
+let windGlobal=null, windMode="";
+
+function windGlobalUnpack(a){
+  const g=new Array(WIND_GCOLS*WIND_GROWS);
+  for(let i=0;i<g.length;i++){
+    const u=a[i*2], v=a[i*2+1], sp=Math.sqrt(u*u+v*v);
+    g[i]= sp>0 ? {u:u,v:v,s:sp,g:null} : null;
+  }
+  return g;
+}
+function windGlobalCacheRead(){
+  try{
+    const raw=localStorage.getItem(WIND_GKEY); if(!raw)return null;
+    const o=JSON.parse(raw);
+    if(!o||!o.t||!o.a||o.a.length!==WIND_GCOLS*WIND_GROWS*2)return null;
+    if(Date.now()-o.t>WIND_GTTL)return null;
+    return {grid:windGlobalUnpack(o.a),at:o.t};
+  }catch(e){return null;}
+}
+function windGlobalCacheWrite(grid){
+  try{
+    const a=new Array(grid.length*2);
+    for(let i=0;i<grid.length;i++){ const q=grid[i];
+      a[i*2]=q?+q.u.toFixed(1):0; a[i*2+1]=q?+q.v.toFixed(1):0; }
+    localStorage.setItem(WIND_GKEY,JSON.stringify({t:Date.now(),a:a}));
+  }catch(e){}   /* quota or private mode — memory cache still works */
+}
+async function windLoadGlobal(tok){
+  if(windGlobal&&Date.now()-windGlobal.at<WIND_GTTL)return windGlobal.grid;
+  const c=windGlobalCacheRead();
+  if(c){ windGlobal=c; return c.grid; }
+  const lats=[],lons=[];
+  for(let r=0;r<WIND_GROWS;r++)for(let c2=0;c2<WIND_GCOLS;c2++){
+    lats.push((-85+r*WIND_GSTEP).toFixed(2));
+    lons.push((-180+c2*WIND_GSTEP).toFixed(2));
+  }
+  const grid=await windFetchGrid(lats,lons,"gfs_seamless",tok,false);
+  if(!grid)return null;
+  windGlobal={grid:grid,at:Date.now()};
+  windGlobalCacheWrite(grid);
+  return grid;
+}
+/* Use the global mesh only where it is actually the finer of the two — that is,
+   once the viewport grid would be stretched past 5 degrees a cell. Everywhere
+   tighter than that the viewport request still wins, and by a lot. */
+function windUseGlobal(){
+  const b=map.getBounds(), g=windGridSize();
+  return (b.getEast()-b.getWest())/(g[0]-1) > WIND_GSTEP*0.9;
+}
+
 async function windLoad(force){
   if(!S.wind||!S.wind.val||!mapVisible())return;
-  const b=map.getBounds(), z=map.getZoom();
-  const key=[z,b.getSouth().toFixed(2),b.getWest().toFixed(2),
+  const b=map.getBounds(), z=map.getZoom(), glob=windUseGlobal();
+  const key=glob?"GLOBAL":[z,b.getSouth().toFixed(2),b.getWest().toFixed(2),
              b.getNorth().toFixed(2),b.getEast().toFixed(2)].join("|");
   if(!force&&key===windKey&&Date.now()-windAt<900000)return;
   if(windBusy)return;
@@ -2135,68 +2250,34 @@ async function windLoad(force){
   const tok=++windTok;
   $("windSt").textContent="LOADING…";
   try{
-    const g=windGridSize(), COLS=g[0], ROWS=g[1];
-    const padY=(b.getNorth()-b.getSouth())*0.1, padX=(b.getEast()-b.getWest())*0.1;
-    const S0=Math.max(-84,b.getSouth()-padY), N0=Math.min(84,b.getNorth()+padY);
-    let W0=b.getWest()-padX, E0=b.getEast()+padX;
-    if(E0-W0>=359.5){ W0=-179.9; E0=179.9; }        /* whole world in view */
-    const lats=[],lons=[];
-    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
-      const dp=z>=10?3:2;                            /* 2dp is ~1 km, well under model res */
-      lats.push((S0+(N0-S0)*r/(ROWS-1)).toFixed(dp));
-      const lon=W0+(E0-W0)*c/(COLS-1);
-      lons.push((((lon+540)%360)-180).toFixed(dp));   /* normalise across the dateline */
-    }
-    if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
-    /* current= is the freshest surface nowcast; hourly is the fallback if a
-       model doesn't publish a current block for that point. */
-    /* cell_selection=nearest: without it Open-Meteo picks the model cell with the
-       best ELEVATION match, not the closest one -- neighbouring grid slots ended up
-       holding wind from displaced cells and the interpolated field grew fake eddies.
-       models= pinned at wide zooms: best_match stitches HRRR (CONUS) against GFS and
-       the HRRR domain edge crossing the Gulf drew a phantom convergence line. One
-       seamless family for wide views; best_match returns at z>=8 for the 3 km detail,
-       where a viewport sits inside a single model domain anyway. */
-    const model=z<=7?"gfs_seamless":"best_match";
-    /* One request is capped at 1000 coordinates and, in practice, by URL length --
-       so the point list goes out as parallel chunks and comes back concatenated. */
-    const reqs=[];
-    for(let i0=0;i0<lats.length;i0+=WIND_CHUNK){
-      const la=lats.slice(i0,i0+WIND_CHUNK), lo=lons.slice(i0,i0+WIND_CHUNK);
-      reqs.push(jget("https://api.open-meteo.com/v1/forecast"+
-        "?latitude="+la.join(",")+"&longitude="+lo.join(",")+
-        "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m"+
-        "&hourly=wind_speed_10m,wind_direction_10m&forecast_hours=2"+
-        "&models="+model+"&cell_selection=nearest"+
-        "&wind_speed_unit=kn&timezone=UTC"));
-    }
-    const parts=await Promise.all(reqs);
-    if(tok!==windTok)return;
-    /* order is preserved inside a response and across chunks, so a plain concat
-       puts every point back on its own grid slot */
-    const arr=[], now=Date.now();
-    parts.forEach(p=>{ (Array.isArray(p)?p:[p]).forEach(o=>arr.push(o)); });
-    if(arr.length!==lats.length)throw new Error("grid length mismatch");
-    const grid=arr.map(o=>{
-      let sp=null,dir=null,gst=null;
-      const cur=o&&o.current;
-      if(cur&&cur.wind_speed_10m!=null&&cur.wind_direction_10m!=null){
-        sp=cur.wind_speed_10m; dir=cur.wind_direction_10m; gst=cur.wind_gusts_10m;
-      }else{
-        const h=o&&o.hourly;
-        if(h&&h.wind_speed_10m&&h.wind_speed_10m.length){
-          let bi=0,bd=Infinity;
-          (h.time||[]).forEach((t,i)=>{
-            const d=Math.abs(new Date(t+(/Z|[+-]\d\d:?\d\d$/.test(t)?"":"Z"))-now);
-            if(d<bd&&h.wind_speed_10m[i]!=null){bd=d;bi=i;}
-          });
-          sp=h.wind_speed_10m[bi]; dir=h.wind_direction_10m?h.wind_direction_10m[bi]:null;
-        }
+    let grid,S0,N0,W0,E0,COLS,ROWS;
+    if(glob){
+      grid=await windLoadGlobal(tok);
+      if(!grid)return;
+      S0=-85; N0=85; W0=-180; E0=180; COLS=WIND_GCOLS; ROWS=WIND_GROWS;
+      windMode="GLOBAL "+WIND_GSTEP+"°";
+    }else{
+      const g=windGridSize(); COLS=g[0]; ROWS=g[1];
+      const padY=(b.getNorth()-b.getSouth())*0.1, padX=(b.getEast()-b.getWest())*0.1;
+      S0=Math.max(-85,b.getSouth()-padY); N0=Math.min(85,b.getNorth()+padY);
+      W0=b.getWest()-padX; E0=b.getEast()+padX;
+      const dLat=(N0-S0)/(ROWS-1), dLon=(E0-W0)/(COLS-1);
+      const dp=windCoordDp(Math.min(dLat,dLon));
+      const lats=[],lons=[];
+      for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+        lats.push((S0+dLat*r).toFixed(dp));
+        lons.push(((((W0+dLon*c)+540)%360)-180).toFixed(dp));  /* normalise across the dateline */
       }
-      if(sp==null||dir==null)return null;
-      const r=dir*Math.PI/180;
-      return {u:-sp*Math.sin(r), v:-sp*Math.cos(r), s:sp, g:gst};  /* direction is where it comes FROM */
-    });
+      if(lats.length>WIND_MAXPTS)throw new Error("grid too large");
+      /* cell_selection=nearest: without it Open-Meteo picks the model cell with the
+         best ELEVATION match, not the closest one. models= pinned at wide zooms:
+         best_match stitches HRRR (CONUS) against GFS and the domain edge crossing
+         the Gulf drew a phantom convergence line. best_match returns at z>=8 for
+         the 3 km detail, where a viewport sits inside one model domain anyway. */
+      grid=await windFetchGrid(lats,lons,z<=7?"gfs_seamless":"best_match",tok,true);
+      if(!grid)return;
+      windMode="";
+    }
     const good=grid.filter(Boolean);
     if(good.length<grid.length*0.5)throw new Error("sparse grid");
     windPeak=Math.max.apply(null,good.map(x=>x.s));
@@ -2291,7 +2372,8 @@ function windTick(){
   c.globalAlpha=1;
 }
 function windUpdateLegend(){
-  $("windSt").textContent="PEAK "+Math.round(windPeak)+" KT · AVG "+Math.round(windMean)+" KT";
+  $("windSt").textContent=(windMode?windMode+" · ":"")+
+    "PEAK "+Math.round(windPeak)+" KT · AVG "+Math.round(windMean)+" KT";
 }
 function windSetVisible(v){
   const btn=$("windBtn");
