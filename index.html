@@ -405,7 +405,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v5.0</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v5.1</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -2420,6 +2420,37 @@ async function windFetchGrid(lats,lons,model,tok,hourlyFallback){
    server-side (see the GitHub Action note in the README) — it is not something a
    point-forecast API should ever be asked for. */
 let windMode="", windFails=0, windCool=0, windRetryT=null;
+
+/* ---------------- the wind layer's spending limit ----------------
+   The viewport grid is the only expensive thing this app does, and it is also
+   the least important: it is detail on a layer you toggle, not the tide, the
+   fish verdict or the radar. So it is capped, and the cap is enforced in two
+   ways.
+
+   1. A hard budget. Ten grids an hour, sixty a day, on a rolling window kept in
+      localStorage so force-closing the app does not hand you a fresh allowance.
+   2. Right of way. If the conditions card or the fish verdict is currently in a
+      retry state, the wind grid does not fetch AT ALL. Whatever budget is left
+      belongs to them. The GFS field keeps drawing the whole time, so the map
+      still looks alive while the layer stands down. */
+const WIND_CAP_HR=10, WIND_CAP_DAY=60, WIND_QKEY="obwx:windq";
+function windQuota(){
+  let q=[];
+  try{ q=JSON.parse(localStorage.getItem(WIND_QKEY)||"[]")||[]; }catch(e){ q=[]; }
+  const now=Date.now();
+  q=q.filter(t=>now-t<86400000);
+  const hr=q.filter(t=>now-t<3600000);
+  return {all:q, hour:hr.length, day:q.length,
+          hourFree:WIND_CAP_HR-hr.length, dayFree:WIND_CAP_DAY-q.length,
+          /* when the oldest request in the window ages out */
+          waitMs:hr.length?Math.max(0,3600000-(now-Math.min.apply(null,hr))):0};
+}
+function windQuotaSpend(){
+  const q=windQuota().all; q.push(Date.now());
+  try{ localStorage.setItem(WIND_QKEY,JSON.stringify(q)); }catch(e){}
+}
+/* a core feed mid-retry means the API is unhappy with us - stay off it */
+function coreFeedsStruggling(){ return (RETRY["now"]||0)>0||(RETRY["fish"]||0)>0; }
 const WIND_BUDGET=320;          /* coordinates per request — the whole cost knob */
 
 /* Grid shape follows the viewport's aspect so points are not wasted: a tall phone
@@ -2522,9 +2553,23 @@ async function windLoad(force){
      whatever intermediate viewport won the race. Remember that a newer view is
      waiting and re-run once the in-flight request lands. */
   if(windBusy){ windPending=true; return; }
+  /* Everything above this line is free: cache hits and unchanged views never
+     reach the network. From here on it costs, so this is where the rules bite. */
+  if(coreFeedsStruggling()){
+    $("windSt").textContent=(windGlobal?"GFS "+windGlobal.dx+"°":"WIND")+
+      " · YIELDING TO CORE FEEDS";
+    return;
+  }
+  const q=windQuota();
+  if(q.hourFree<=0||q.dayFree<=0){
+    const mins=Math.ceil(q.waitMs/60000);
+    $("windSt").textContent=(windGlobal?"GFS "+windGlobal.dx+"°":"WIND")+
+      " · LOCAL DETAIL BUDGETED"+(q.dayFree<=0?" (DAILY)":" ("+mins+"M)");
+    return;
+  }
   windBusy=true;
   const tok=++windTok;
-  $("windSt").textContent="LOADING…";
+  $("windSt").textContent="LOADING… ("+q.hourFree+" LEFT THIS HOUR)";
   try{
     const g=windGridSize(), COLS=g[0], ROWS=g[1];
     const padY=(b.getNorth()-b.getSouth())*0.08, padX=(b.getEast()-b.getWest())*0.08;
@@ -2547,6 +2592,7 @@ async function windLoad(force){
        detail, where a viewport sits inside one model domain anyway.
        No &hourly= any more: current= alone halves the variables in the request,
        and variables are half of what a request costs. */
+    windQuotaSpend();                              /* counted at the moment of spending */
     const grid=await windFetchGrid(lats,lons,z<=7?"gfs_seamless":"best_match",tok,false);
     if(!grid)return;
     const good=grid.filter(Boolean);
@@ -2666,8 +2712,10 @@ function windTick(){
   c.globalAlpha=1;
 }
 function windUpdateLegend(){
+  const q=windQuota();
   $("windSt").textContent=(windMode?windMode+" · ":"")+
-    "PEAK "+Math.round(windPeak)+" KT · AVG "+Math.round(windMean)+" KT";
+    "PEAK "+Math.round(windPeak)+" KT · AVG "+Math.round(windMean)+" KT"+
+    (windFine?" · "+q.hourFree+"/"+WIND_CAP_HR+" LEFT":"");
 }
 function windSetVisible(v){
   const btn=$("windBtn");
