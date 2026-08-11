@@ -421,7 +421,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v5.2</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v5.3</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -505,7 +505,7 @@ nav button:active svg{transform:scale(.86)}
       </div>
     </div>
     <div class="card">
-      <div class="c-hd"><h2>Tide — Pensacola 8729840</h2><span class="st" id="tideSt">—</span></div>
+      <div class="c-hd"><h2 id="tideCardTitle">Tide</h2><span class="st" id="tideSt">—</span></div>
       <div class="c-bd">
         <div class="now" id="tideNow"></div>
         <canvas id="tideCv" height="200"></canvas>
@@ -572,6 +572,7 @@ nav button:active svg{transform:scale(.86)}
     <div class="card">
       <div class="c-hd"><h2 id="targHdr">Targets</h2><span class="st" id="targSt">—</span></div>
       <div class="c-bd">
+        <div class="hint" id="regionNote" style="display:none;margin-bottom:10px"></div>
         <div class="chips" id="fishFilter">
           <button class="chip on" data-f="all">ALL</button>
           <button class="chip" data-f="open">CAN KEEP</button>
@@ -637,8 +638,135 @@ nav button:active svg{transform:scale(.86)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 "use strict";
-const HOME=[30.372,-87.088];          /* data fallback only */
-let LOC=HOME.slice();                 /* live forecast anchor — follows GPS fix (v3.9) */
+const HOME=[30.372,-87.088];          /* cold-start fallback only */
+let LOC=HOME.slice();                 /* live anchor — every feed reads this, never a literal */
+
+/* ================= GEO ENGINE (v5.3) =================
+   Before this the app had one location behaviour: take a fix at boot if the live
+   location layer happened to be on, and re-run exactly two loaders if it moved.
+   Everything else was Pensacola forever. The engine below is the single source of
+   truth for "where am I", and `retarget()` is the single place that re-runs the
+   world when that answer changes.
+
+   Rules:
+   - `LOC` is the anchor. No feed may contain a literal coordinate. If you add one,
+     you have re-introduced the bug this release exists to fix.
+   - `GEO.cc` / `GEO.isUS` decide which PROVIDER answers, never whether a feature
+     exists. US-only feeds (NWS, CO-OPS, NDBC) degrade to global models, and say so.
+   - A fix arriving is not a reason to refetch. Moving is. `RETARGET_KM` is the gate
+     and the debounce absorbs the burst of fixes iOS delivers when a GPS lock warms up. */
+const GEO={ lat:HOME[0], lon:HOME[1], acc:null, at:0, fixed:false,
+            place:null, admin:null, adminCode:null, cc:null, country:null, isUS:true };
+const RETARGET_KM=5;                  /* ~3 mi — below this nothing meaningful changes */
+let geoWatch=null, geoDebounce=null, geoBusy=false;
+
+/* great-circle km; used for station picking, not navigation */
+function kmBetween(a1,o1,a2,o2){
+  const R=6371, dLat=(a2-a1)*Math.PI/180, dLon=(o2-o1)*Math.PI/180;
+  const p1=a1*Math.PI/180, p2=a2*Math.PI/180;
+  const h=Math.sin(dLat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+
+/* last known position survives a cold start, so the map opens where you are */
+function geoRestore(){
+  try{
+    const v=JSON.parse(localStorage.getItem("obwx:lastfix"));
+    if(v&&isFinite(v.lat)&&isFinite(v.lon)){
+      GEO.lat=v.lat; GEO.lon=v.lon; LOC=[v.lat,v.lon];
+      if(v.place){GEO.place=v.place;GEO.admin=v.admin;GEO.adminCode=v.adminCode;
+                  GEO.cc=v.cc;GEO.country=v.country;GEO.isUS=v.cc==="US";}
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function geoPersist(){
+  try{localStorage.setItem("obwx:lastfix",JSON.stringify({lat:GEO.lat,lon:GEO.lon,
+    place:GEO.place,admin:GEO.admin,adminCode:GEO.adminCode,cc:GEO.cc,country:GEO.country}));}catch(e){}
+}
+
+/* Worldwide place name. BigDataCloud's client-side endpoint: no key, browser-only,
+   and its fair-use terms require exactly what we do — the device's own current fix.
+   Cached per 0.1 deg cell (~11 km) so a day on the water is one lookup, not fifty. */
+async function geoReverse(){
+  const key="obwx:rgeo:"+GEO.lat.toFixed(1)+","+GEO.lon.toFixed(1);
+  try{
+    const c=JSON.parse(localStorage.getItem(key));
+    if(c&&Date.now()-c.at<30*86400000&&c.v){Object.assign(GEO,c.v);return;}
+  }catch(e){}
+  try{
+    const d=await jget("https://api.bigdatacloud.net/data/reverse-geocode-client"+
+      `?latitude=${GEO.lat}&longitude=${GEO.lon}&localityLanguage=en`);
+    const v={ place:d.city||d.locality||d.principalSubdivision||null,
+              admin:d.principalSubdivision||null,
+              adminCode:(d.principalSubdivisionCode||"").split("-").pop()||null,
+              cc:(d.countryCode||"").toUpperCase()||null,
+              country:d.countryName||null };
+    v.isUS=v.cc==="US";
+    if(!v.place&&!v.cc)return;                       /* offshore/ocean: keep what we had */
+    Object.assign(GEO,v);
+    try{localStorage.setItem(key,JSON.stringify({at:Date.now(),v:v}));}catch(e){}
+  }catch(e){ /* NWS still names US places; elsewhere the header falls back to coords */ }
+}
+
+/* Header identity line. Coordinates are the honest fallback — never a stale city. */
+function geoLabel(){
+  if(GEO.place&&GEO.admin&&GEO.place!==GEO.admin)return (GEO.place+", "+GEO.admin);
+  if(GEO.place)return GEO.place+(GEO.country&&!GEO.isUS?", "+GEO.country:"");
+  return GEO.lat.toFixed(2)+(GEO.lat>=0?"N ":"S ")+Math.abs(GEO.lon).toFixed(2)+(GEO.lon>=0?"E":"W");
+}
+function geoApplyLabel(){
+  const t=geoLabel();
+  const h=$("hdrLoc"); if(h)h.textContent=t.toUpperCase();
+  [["nowTitle","Current — "],["fcTitle","Next 12 hours — "],["wkTitle","7-day outlook — "]]
+    .forEach(([id,pre])=>{const el=$(id); if(el)el.textContent=pre+t;});
+}
+
+/* THE re-run. Everything location-dependent is listed here exactly once; if a feed
+   is not in this list it will not follow you, which was the whole v5.2 complaint. */
+async function retarget(reason){
+  if(geoBusy)return; geoBusy=true;
+  try{
+    await geoReverse();
+    geoApplyLabel();
+    geoPersist();
+    await tideResolve();                 /* pick the tide provider for where we are */
+    applyRegion();                       /* show/hide what this region can support */
+    [loadNow,loadForecast,loadBuoys,loadSwell,
+     ()=>loadTides().then(loadFish),loadAlertPolys].forEach(safe);
+    safe(()=>{ if(typeof windLoad==="function"&&S.wind&&S.wind.val)windLoad(true); });
+  }catch(e){ console.warn("retarget",reason,e); }
+  finally{ geoBusy=false; }
+}
+function geoScheduleRetarget(reason){
+  clearTimeout(geoDebounce);
+  geoDebounce=setTimeout(()=>safe(()=>retarget(reason)),3500);
+}
+
+/* iOS fires a burst of fixes as the lock tightens; accept them all for the dot and
+   the rings, gate the expensive refetch on actual displacement. */
+function geoOnFix(pos,pan){
+  const lat=pos.coords.latitude, lon=pos.coords.longitude;
+  if(!isFinite(lat)||!isFinite(lon))return;
+  const moved=kmBetween(GEO.lat,GEO.lon,lat,lon);
+  const first=!GEO.fixed;
+  GEO.lat=lat; GEO.lon=lon; GEO.acc=pos.coords.accuracy||null; GEO.at=Date.now();
+  LOC=[lat,lon];
+  safe(()=>meUpdate(lat,lon,GEO.acc,pan||first));
+  safe(()=>drawRings(lat,lon));
+  if(first){GEO.fixed=true; geoScheduleRetarget("first fix");}
+  else if(moved>=RETARGET_KM) geoScheduleRetarget("moved "+moved.toFixed(1)+" km");
+  else geoPersist();
+}
+function geoStart(){
+  if(!navigator.geolocation||geoWatch!=null)return;
+  geoWatch=navigator.geolocation.watchPosition(p=>geoOnFix(p,false),()=>{},
+    {enableHighAccuracy:true,maximumAge:60000,timeout:20000});
+}
+function geoStop(){
+  if(geoWatch!=null&&navigator.geolocation){navigator.geolocation.clearWatch(geoWatch);geoWatch=null;}
+}
 const $=id=>document.getElementById(id);
 const ft=m=>m*3.28084;
 const dirTxt=d=>["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d/22.5)%16];
@@ -654,7 +782,7 @@ setInterval(()=>{ $("clock").firstElementChild.textContent=new Date().toLocaleTi
 const map=L.map("map",{zoomControl:false,preferCanvas:true,tap:false,
   zoomSnap:.5,wheelPxPerZoomLevel:110,
   maxBounds:[[-85.05,-180],[85.05,180]],maxBoundsViscosity:1
-  }).setView([30.05,-87.15],8);
+  }).setView(geoRestore()?[GEO.lat,GEO.lon]:[30.05,-87.15], geoRestore()?9:8);
 /* Zoom floor: the world is 256*2^z px tall, so anything below log2(viewH/256)
    leaves bare canvas above and below the map. Recomputed on resize/rotate so a
    landscape phone and an iPad get their own floor. */
@@ -781,31 +909,127 @@ const gHurr=L.layerGroup([gOutlook,gTrack]);
 let hurrLoaded=false;
 const gMe=L.layerGroup();
 let meMarker=null,meCircle=null;
+/* Marker and accuracy halo. Split out of the old locate() so the watch, the manual
+   button and a restored fix all move the same dot through one path. */
+function meUpdate(lat,lon,acc,pan){
+  const ll=[lat,lon];
+  if(!meMarker){
+    meMarker=L.marker(ll,{icon:L.divIcon({className:"",html:'<div class="me-dot"></div>',
+      iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}).addTo(gMe);
+    meCircle=L.circle(ll,{radius:acc||50,color:"#45d6ff",weight:1,
+      opacity:.4,fillColor:"#45d6ff",fillOpacity:.08,interactive:false}).addTo(gMe);
+  }else{meMarker.setLatLng(ll);meCircle.setLatLng(ll).setRadius(acc||50);}
+  if(pan)map.setView(ll,Math.max(map.getZoom(),11));
+}
+/* One-shot fix for the ⌖ button. The continuous watch is geoStart(). */
 function locate(pan){
   if(!navigator.geolocation)return;
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const ll=[pos.coords.latitude,pos.coords.longitude];
-    if(!meMarker){
-      meMarker=L.marker(ll,{icon:L.divIcon({className:"",html:'<div class="me-dot"></div>',
-        iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}).addTo(gMe);
-      meCircle=L.circle(ll,{radius:pos.coords.accuracy||50,color:"#45d6ff",weight:1,
-        opacity:.4,fillColor:"#45d6ff",fillOpacity:.08,interactive:false}).addTo(gMe);
-    }else{meMarker.setLatLng(ll);meCircle.setLatLng(ll).setRadius(pos.coords.accuracy||50);}
-    if(pan)map.setView(ll,Math.max(map.getZoom(),11));
-    drawRings(ll[0],ll[1]);
-    /* v3.9 — forecast follows the fix: retarget when moved >0.03° from current anchor */
-    if(Math.abs(ll[0]-LOC[0])>0.03||Math.abs(ll[1]-LOC[1])>0.03){
-      LOC=[ll[0],ll[1]];
-      safe(loadNow);safe(loadForecast);
-    }
-  },()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:120000});
+  navigator.geolocation.getCurrentPosition(p=>geoOnFix(p,pan),()=>{},
+    {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
+  geoStart();
 }
 
-/* home marker removed — range rings follow live location instead, drawn once we have a fix */
-let ringsDrawn=false;
+/* Range rings. These used to latch on the first fix and never move again — they
+   were 25/50 nm from wherever you happened to open the app that morning. */
+let ringLayers=null;
 function drawRings(lat,lon){
-  if(ringsDrawn)return;ringsDrawn=true;
-  [25,50].forEach(nm=>L.circle([lat,lon],{radius:nm*1852,color:"#39ff6b",weight:1,opacity:.35,fill:false,dashArray:"3 6"}).addTo(gRings));
+  if(!ringLayers){
+    ringLayers=[25,50].map(nm=>L.circle([lat,lon],{radius:nm*1852,color:"#39ff6b",
+      weight:1,opacity:.35,fill:false,dashArray:"3 6"}).addTo(gRings));
+  }else ringLayers.forEach(c=>c.setLatLng([lat,lon]));
+}
+
+/* ================= TIDE PROVIDER (v5.3) =================
+   One normalised shape, two sources. Everything downstream — the chart, the tiles,
+   the four-day list, the ribbon, the bite windows — reads `pred`/`hilo` and neither
+   knows nor cares which one answered.
+
+   US: the nearest CO-OPS gauge. Real harmonic predictions, MLLW, 6-minute, plus an
+   observed water level and water temperature.
+   Everywhere else: Open-Meteo's `sea_level_height_msl` (Copernicus SMOC). This is a
+   MODEL at 0.08 deg with no observations, referenced to global mean sea level rather
+   than chart datum, and Open-Meteo say plainly it is not suitable for coastal
+   navigation. The UI must say MSL · MODEL and must not imply otherwise — heights are
+   not comparable to a chart or to a CO-OPS reading. The SHAPE of the curve is what
+   travels; the absolute number does not. */
+const TIDE={mode:"coops", id:"8729840", name:"PENSACOLA", km:null,
+            datum:"MLLW", src:"NOAA CO-OPS", model:false, degraded:false};
+/* Every switch to the model goes through here. An earlier build flipped the datum
+   and the source inline inside loadTides but left TIDE.mode and TIDE.id pointing at
+   the gauge, so the object claimed to be a CO-OPS station reporting an MSL datum —
+   and the meta line rendered a station number next to model heights. */
+function tideUseModel(name,degraded){
+  TIDE.mode="model"; TIDE.id=null; TIDE.km=null; TIDE.model=true;
+  TIDE.name=name||"LOCAL WATERS"; TIDE.datum="MSL"; TIDE.src="COPERNICUS SMOC (MODEL)";
+  TIDE.degraded=!!degraded;
+}
+let coopsStations=null, coopsFailed=false;
+
+async function coopsList(){
+  if(coopsStations)return coopsStations;
+  try{
+    const c=JSON.parse(localStorage.getItem("obwx:coops"));
+    if(c&&Date.now()-c.at<30*86400000&&c.s&&c.s.length){coopsStations=c.s;return c.s;}
+  }catch(e){}
+  const d=await jget("https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"+
+                     "?type=tidepredictions&units=english");
+  const raw=d.stations||d.Stations||[];
+  /* slimmed to [id,name,lat,lon] before it hits localStorage; the full payload is
+     megabytes and would crowd out the wind quota ledger */
+  coopsStations=raw.map(x=>[String(x.id),String(x.name||x.id),
+                            +x.lat, +(x.lng!=null?x.lng:x.lon)])
+                   .filter(a=>a[0]&&isFinite(a[2])&&isFinite(a[3]));
+  if(!coopsStations.length)throw new Error("no stations");
+  try{localStorage.setItem("obwx:coops",JSON.stringify({at:Date.now(),s:coopsStations}));}catch(e){}
+  return coopsStations;
+}
+
+/* 150 km is the honest reach of a tide gauge for "what is the water doing here".
+   Past that the model is a better answer than a confidently wrong gauge. */
+const COOPS_MAX_KM=150;
+async function tideResolve(){
+  const useModel=n=>tideUseModel(n,false);
+  if(GEO.cc&&!GEO.isUS){ useModel(geoLabel().toUpperCase()); return; }
+  if(coopsFailed){ useModel(geoLabel().toUpperCase()); return; }
+  try{
+    const list=await coopsList();
+    let best=null,bd=1e9;
+    for(let i=0;i<list.length;i++){
+      const d=kmBetween(GEO.lat,GEO.lon,list[i][2],list[i][3]);
+      if(d<bd){bd=d;best=list[i];}
+    }
+    if(best&&bd<=COOPS_MAX_KM){
+      TIDE.mode="coops"; TIDE.id=best[0]; TIDE.name=best[1].toUpperCase();
+      TIDE.km=Math.round(bd); TIDE.model=false; TIDE.datum="MLLW";
+      TIDE.src="NOAA CO-OPS"; TIDE.degraded=false;
+    }else useModel(geoLabel().toUpperCase());
+  }catch(e){ coopsFailed=true; useModel(geoLabel().toUpperCase()); }
+}
+
+/* ================= REGION GATING =================
+   A feed that only covers one country should degrade visibly, not silently return
+   nothing and look broken. `applyRegion` is the one place that decides what this
+   part of the world can support. */
+const GULF={n:31.2,s:24.0,w:-98.0,e:-80.0};
+const inGulf=()=>GEO.lat<=GULF.n&&GEO.lat>=GULF.s&&GEO.lon>=GULF.w&&GEO.lon<=GULF.e;
+function applyRegion(){
+  const us=GEO.isUS, gulf=inGulf();
+  /* NWS alert polygons and the banner are a US product */
+  if(!us){ safe(()=>{const a=$("alerts"); if(a)a.style.display="none";}); alertLayer.clearLayers(); }
+  /* the offshore swell BANDS are three hand-drawn Gulf arcs; they are decoration and
+     they must not be drawn across Switzerland. The swell TABLE follows LOC everywhere. */
+  safe(()=>{ if(!gulf&&map.hasLayer(gSwell))map.removeLayer(gSwell); });
+  const tc=$("tideCardTitle");
+  if(tc)tc.textContent="Tide — "+TIDE.name+(TIDE.km!=null?" · "+TIDE.km+" km":"");
+  const rn=$("regionNote");
+  if(rn){
+    const bits=[];
+    if(!us)bits.push("NWS alerts and NDBC buoys are US-only and are off here.");
+    if(TIDE.model)bits.push("Tides are a global model referenced to mean sea level, not chart datum — read the shape, not the number.");
+    if(!gulf)bits.push("Harvest rules and the species list are Florida Panhandle / Gulf and are not shown outside it.");
+    rn.innerHTML=bits.length?bits.join(" "):"";
+    rn.style.display=bits.length?"block":"none";
+  }
 }
 
 const BUOY_DIR=[
@@ -1013,18 +1237,85 @@ function pairDaily(per){
   return rows.slice(0,7);
 }
 
+/* NWS wants a state list; derive it from where we are rather than the three states
+   that happened to surround Pensacola. Neighbours are included because a warning
+   polygon two counties away still matters on the water. */
+const NEIGHBOURS={FL:"FL,AL,GA",AL:"AL,FL,MS",MS:"MS,AL,LA",LA:"LA,MS,TX",TX:"TX,LA",
+  CA:"CA,OR",OR:"OR,WA,CA",WA:"WA,OR",ME:"ME,NH",MA:"MA,RI,NH",NY:"NY,NJ,CT",
+  NJ:"NJ,NY,DE",NC:"NC,SC,VA",SC:"SC,NC,GA",GA:"GA,FL,SC",VA:"VA,NC,MD",MD:"MD,VA,DE",
+  AK:"AK",HI:"HI"};
+function alertArea(){
+  const st=(GEO.adminCode||"").toUpperCase();
+  if(NEIGHBOURS[st])return NEIGHBOURS[st];
+  return /^[A-Z]{2}$/.test(st)?st:"FL,AL,MS,LA";
+}
+/* NWS marine zones: gm=Gulf, an=Atlantic, pz=Pacific, ak=Alaska, ph=Pacific islands */
+function marineRegion(){
+  if(GEO.lat>=50&&GEO.lon<=-130)return "ak";
+  if(GEO.lat<=25&&GEO.lon<=-150)return "ph";
+  if(GEO.lon<=-115)return "pz";
+  if(inGulf())return "gm";
+  return "an";
+}
+
+/* Outside the US there is no NWS. Open-Meteo covers the whole world, so the forecast
+   card degrades in SOURCE, not in existence. */
+async function loadForecastGlobal(){
+  try{
+    const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${LOC[0]}&longitude=${LOC[1]}`+
+      "&hourly=temperature_2m,precipitation_probability,wind_speed_10m,weather_code"+
+      "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code"+
+      "&temperature_unit=fahrenheit&wind_speed_unit=kn&timezone=auto&forecast_days=7");
+    const WC=c=>c==null?"—":c===0?"Clear":c<=3?"Partly cloudy":c<=48?"Fog":c<=57?"Drizzle":
+      c<=67?"Rain":c<=77?"Snow":c<=82?"Showers":c<=86?"Snow showers":"Thunderstorms";
+    /* reuse the NWS card's exact markup and classes — a second visual language for
+       the same card would be obvious the moment you crossed a border */
+    const EM=(c,day)=>c==null?"·":c===0?(day?"☀️":"🌙"):c<=3?(day?"⛅":"☁️"):c<=48?"🌫️":
+      c<=57?"🌦️":c<=67?"🌧️":c<=77?"❄️":c<=82?"🌦️":c<=86?"🌨️":"⛈️";
+    const H=d.hourly, nowH=Date.now()-3600000;
+    let i0=(H.time||[]).findIndex(t=>new Date(t).getTime()>=nowH); if(i0<0)i0=0;
+    $("hours").innerHTML=(H.time||[]).slice(i0,i0+12).map((t,k)=>{
+      const j=i0+k, dt=new Date(t), isDay=dt.getHours()>=7&&dt.getHours()<19;
+      return `<div class="hr${k===0?" now":""}">
+        <div class="t">${dt.toLocaleTimeString("en-US",{hour:"numeric"})}</div>
+        <div class="em">${EM(H.weather_code?H.weather_code[j]:null,isDay)}</div>
+        <div class="tv">${Math.round(H.temperature_2m[j])}°</div>
+        <div class="pp">${H.precipitation_probability?H.precipitation_probability[j]:0}%</div>
+        <div class="wd">${Math.round(H.wind_speed_10m[j])}KT</div>
+      </div>`;}).join("");
+    stamp("fcSt");
+    const D=d.daily;
+    $("week").innerHTML=(D.time||[]).slice(0,7).map((t,i)=>{
+      const dt=new Date(t+"T12:00");
+      return `<div class="wr">
+        <div class="wd2">${i===0?"TODAY":dt.toLocaleDateString("en-US",{weekday:"short"}).toUpperCase()}</div>
+        <div class="we">${EM(D.weather_code?D.weather_code[i]:null,true)}</div>
+        <div class="ws">${WC(D.weather_code?D.weather_code[i]:null)}</div>
+        <div class="wt">${Math.round(D.temperature_2m_max[i])}°<small> / ${Math.round(D.temperature_2m_min[i])}°</small></div>
+        <div class="wp">${D.precipitation_probability_max?D.precipitation_probability_max[i]:0}%</div>
+      </div>`;}).join("");
+    stamp("wkSt");
+  }catch(e){
+    $("week").innerHTML='<div class="err">7-day outlook unavailable — retrying</div>';
+  }
+}
+
 async function loadForecast(){
   let p=null;
   try{
+    if(!GEO.isUS){ geoApplyLabel(); await loadForecastGlobal(); return; }
     p=await jget(`https://api.weather.gov/points/${LOC[0]},${LOC[1]}`);
     const rl=p.properties.relativeLocation?.properties;
+    /* NWS knows the nearest US town better than a global geocoder does; prefer it
+       here and let geoApplyLabel own the header everywhere else. */
     if(rl&&rl.city){
       const place=rl.city+", "+rl.state;
+      GEO.place=rl.city; GEO.admin=rl.state; GEO.cc="US"; GEO.isUS=true;
       $("nowTitle").textContent="Current — "+place;
       $("fcTitle").textContent="Next 12 hours — "+place;
       $("wkTitle").textContent="7-day outlook — "+place;
       $("hdrLoc").textContent=place.toUpperCase();
-    }else $("hdrLoc").textContent=LOC[0].toFixed(2)+"N "+Math.abs(LOC[1]).toFixed(2)+"W";
+    }else geoApplyLabel();
     const h=await jget(p.properties.forecastHourly);
     const hNow=new Date().getHours();
     $("hours").innerHTML=h.properties.periods.slice(0,12).map((x,hi)=>`
@@ -1052,6 +1343,7 @@ async function loadForecast(){
     }
   }catch(e){$("week").innerHTML=`<div class="err">7-day outlook unavailable — retrying</div>`;}
   try{
+    if(!GEO.isUS){$("alerts").style.display="none";return;}
     const a=await jget(`https://api.weather.gov/alerts/active?point=${LOC[0]},${LOC[1]}`);
     const feats=a.features||[];
     if(feats.length){
@@ -1358,12 +1650,17 @@ function renderTideNow(pred, hilo, obs){
   }
   const m = $("tideMeta");
   if(m) m.innerHTML =
-    '<span>STATION <b>8729840</b> PENSACOLA</span>' +
-    '<span>DATUM <b>MLLW</b></span>' +
+    '<span>' + (TIDE.model ? 'SOURCE <b>MODEL</b>' :
+       'STATION <b>' + TIDE.id + '</b> ' + TIDE.name) + '</span>' +
+    '<span>DATUM <b>' + TIDE.datum + '</b></span>' +
+    (TIDE.km != null ? '<span>GAUGE <b>' + TIDE.km + ' KM</b> AWAY</span>' : '') +
     (waterTempF != null ? '<span>WATER <b>' + Math.round(waterTempF) + '°F</b></span>' : '') +
     (swing != null ? '<span>SWING TODAY <b>' + fmt(swing,1) + ' FT</b></span>' : '') +
     '<span class="fw">Window runs three hours back to twenty-one ahead. ' +
-      'Drag across the chart to read any moment.</span>';
+      'Drag across the chart to read any moment.' +
+      (TIDE.model ? ' Heights come from a global ocean model referenced to mean sea level, ' +
+        'not chart datum — the shape and the timing travel, the absolute number does not. ' +
+        'Not for navigation.' : '') + '</span>';
 }
 
 function parseNDBC(txt){
@@ -1375,9 +1672,17 @@ function parseNDBC(txt){
   hdr.forEach((h,i)=>o[h]=v[i]==="MM"?null:+v[i]);
   return o;
 }
+/* Which stations are worth asking about from here. NDBC's realtime2 feed is a US
+   network; a Gulf station read from the Adriatic is not data, it is decoration. */
+function activeBuoys(){
+  if(inGulf()||BUOYS.some(b=>!b.core))return BUOYS;
+  return [{id:"LOCAL",name:(GEO.place||"LOCAL WATERS").toUpperCase(),
+           lat:LOC[0],lon:LOC[1],core:true,modelOnly:true}];
+}
 async function loadBuoys(){
+  const BUOYS=activeBuoys();
   const marine=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
-    `&current=wave_height,wave_period,wave_direction,sea_surface_temperature&timezone=auto`).catch(()=>null);
+    `&current=wave_height,wave_period,wave_direction,sea_surface_temperature&cell_selection=sea&timezone=auto`).catch(()=>null);
   const wx=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
     `&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kn&timezone=auto`).catch(()=>null);
   const mArr=Array.isArray(marine)?marine:[marine], wArr=Array.isArray(wx)?wx:[wx];
@@ -1386,6 +1691,7 @@ async function loadBuoys(){
     const b=BUOYS[i];
     let d={},src="MODEL";
     try{
+      if(b.modelOnly)throw new Error("model only");
       const o=parseNDBC(await tget(`https://www.ndbc.noaa.gov/data/realtime2/${b.id}.txt`));
       if(o){d={wv:ft(o.WVHT),per:o.DPD,wind:o.WSPD*1.944,gust:o.GST*1.944,pres:o.PRES,wtmp:o.WTMP!=null?o.WTMP*9/5+32:null,dir:o.MWD};src="OBS";}
     }catch(e){}
@@ -1517,7 +1823,9 @@ fillBuoySel();
 
 async function loadSwell(){
   try{
-    const lats=[...BANDS.map(b=>b.lat),30.30], lons=lats.map(()=> -87.15);
+    /* bands keep their fixed Gulf latitudes (they are drawn arcs, hidden outside the
+       Gulf by applyRegion); the nearshore row is wherever LOC is */
+    const lats=[...BANDS.map(b=>b.lat),LOC[0]], lons=[...BANDS.map(()=> -87.15),LOC[1]];
     const d=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}`+
       `&current=wave_height,wave_period,swell_wave_height,swell_wave_period,swell_wave_direction,wind_wave_height,wind_wave_period,wind_wave_direction&timezone=auto`);
     const arr=Array.isArray(d)?d:[d];
@@ -1555,8 +1863,8 @@ function alertColor(ev){
 async function loadAlertPolys(){
   try{
     const [land,marine]=await Promise.all([
-      jget("https://api.weather.gov/alerts/active?status=actual&area=FL,AL,MS,LA&limit=120"),
-      jget("https://api.weather.gov/alerts/active?status=actual&region=gm&limit=80").catch(()=>({features:[]}))
+      jget("https://api.weather.gov/alerts/active?status=actual&area="+alertArea()+"&limit=120"),
+      jget("https://api.weather.gov/alerts/active?status=actual&region="+marineRegion()+"&limit=80").catch(()=>({features:[]}))
     ]);
     alertLayer.clearLayers();
     const seen={};
@@ -2377,32 +2685,120 @@ function drawRibbon(){
 
 /* ================= TIDES ================= */
 let tideDaysCache=null, waterTempF=null;
-const COOPS="https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=8729840"+
+/* station is no longer baked in — TIDE.id is resolved from where you are */
+const coopsURL=()=>"https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station="+TIDE.id+
             "&datum=MLLW&units=english&time_zone=lst_ldt&format=json";
 function todayStamp(){const d=new Date();
   return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");}
 function yestStamp(){const d=new Date(Date.now()-DAYMS);
   return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");}
+/* CO-OPS speaks "YYYY-MM-DD HH:MM" local; the model path is normalised to the same
+   string so nothing downstream needs to know which provider answered. */
+const coopsStamp=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+
+  String(d.getDate()).padStart(2,"0")+" "+String(d.getHours()).padStart(2,"0")+":"+
+  String(d.getMinutes()).padStart(2,"0");
+
+/* Catmull-Rom through the model's hourly samples, resampled to 6 minutes. A
+   semidiurnal tide is ~12 samples per cycle at hourly resolution; linear
+   interpolation would put visible corners at every turn and bias the turn TIME
+   toward whichever whole hour happened to be sampled nearest the peak. */
+function tideResample(times,vals,stepMin){
+  const out=[], n=vals.length;
+  if(n<4)return out;
+  const at=i=>vals[Math.max(0,Math.min(n-1,i))];
+  for(let i=0;i<n-1;i++){
+    const p0=at(i-1),p1=at(i),p2=at(i+1),p3=at(i+2);
+    const span=times[i+1]-times[i], steps=Math.max(1,Math.round(span/(stepMin*60000)));
+    for(let k=0;k<steps;k++){
+      const t=k/steps, t2=t*t, t3=t2*t;
+      const v=0.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3);
+      out.push({t:coopsStamp(new Date(times[i]+t*span)), v:v.toFixed(3)});
+    }
+  }
+  out.push({t:coopsStamp(new Date(times[n-1])), v:vals[n-1].toFixed(3)});
+  return out;
+}
+/* Turns, found on the resampled curve and refined by fitting a parabola through the
+   extremum and its neighbours — otherwise the reported time quantises to the 6-minute
+   grid and every high in the app lands on a suspiciously round number. */
+function tideFindTurns(pred){
+  const out=[], n=pred.length;
+  const T=i=>new Date(pred[i].t.replace(" ","T")).getTime(), V=i=>+pred[i].v;
+  for(let i=1;i<n-1;i++){
+    const a=V(i-1),b=V(i),c=V(i+1);
+    const hi=b>a&&b>=c, lo=b<a&&b<=c;
+    if(!hi&&!lo)continue;
+    const den=(a-2*b+c);
+    const shift=den===0?0:0.5*(a-c)/den;                 /* in samples, |shift|<=0.5 */
+    const dt=(T(i+1)-T(i-1))/2;
+    out.push({t:coopsStamp(new Date(T(i)+shift*dt)),
+              v:(b-0.25*(a-c)*shift).toFixed(3), type:hi?"H":"L"});
+  }
+  return out;
+}
+
+/* Global fallback: Open-Meteo sea_level_height_msl. Model, MSL datum, no obs.
+   `cell_selection=sea` matters — the default picks a cell by land elevation, which
+   for a coastal fix hands back a cell that is not water at all. */
+async function loadTidesModel(){
+  const d=await jget("https://marine-api.open-meteo.com/v1/marine"+
+    `?latitude=${LOC[0]}&longitude=${LOC[1]}`+
+    "&hourly=sea_level_height_msl&current=sea_surface_temperature"+
+    "&past_days=1&forecast_days=3&cell_selection=sea&timezone=auto");
+  const h=d.hourly||{};
+  const unit=(d.hourly_units&&d.hourly_units.sea_level_height_msl)||"m";
+  const k=/^m$/i.test(unit)?3.28084:1;                  /* app is imperial throughout */
+  const times=[],vals=[];
+  (h.time||[]).forEach((t,i)=>{
+    const v=h.sea_level_height_msl?h.sea_level_height_msl[i]:null;
+    if(v==null||isNaN(v))return;
+    times.push(new Date(t).getTime()); vals.push(v*k);
+  });
+  if(vals.length<6)throw new Error("model tide unavailable here");
+  const pred=tideResample(times,vals,6);
+  const sst=d.current&&d.current.sea_surface_temperature;
+  return {pred:pred, hilo:tideFindTurns(pred), obs:null,
+          wt:(sst!=null&&!isNaN(sst))?sst*9/5+32:null};
+}
+
+async function loadTidesCoops(){
+  const C=coopsURL();
+  const [pred,hilo,obs,wt]=await Promise.all([
+    jget(C+"&product=predictions&begin_date="+yestStamp()+"&range=72"),
+    jget(C+"&product=predictions&interval=hilo&begin_date="+todayStamp()+"&range=96"),
+    jget(C+"&product=water_level&date=latest").catch(()=>null),
+    jget(C+"&product=water_temperature&date=latest").catch(()=>null)
+  ]);
+  const w=wt&&wt.data&&wt.data[0]?+wt.data[0].v:null;
+  return {pred:pred.predictions||[], hilo:hilo.predictions||[],
+          obs:obs&&obs.data?obs.data[0]:null, wt:(w!=null&&!isNaN(w))?w:null};
+}
+
 async function loadTides(){
   try{
-    const [pred,hilo,obs,wt]=await Promise.all([
-      jget(COOPS+"&product=predictions&begin_date="+yestStamp()+"&range=72"),
-      jget(COOPS+"&product=predictions&interval=hilo&begin_date="+todayStamp()+"&range=96"),
-      jget(COOPS+"&product=water_level&date=latest").catch(()=>null),
-      jget(COOPS+"&product=water_temperature&date=latest").catch(()=>null)
-    ]);
-    hiloCache=hilo.predictions||[];
-    const predAll=pred.predictions||[];
+    /* re-pick when we have nothing, and retry a gauge that only failed transiently
+       rather than leaving the location on the model until the app restarts */
+    if((!TIDE.id&&!TIDE.model)||(TIDE.degraded&&GEO.isUS))await tideResolve();
+    let r;
+    try{
+      r=TIDE.model?await loadTidesModel():await loadTidesCoops();
+    }catch(e){
+      /* a dead or datum-less gauge is not a reason to have no tide at all */
+      if(!TIDE.model){ tideUseModel(geoLabel().toUpperCase(),true); safe(applyRegion);
+                       r=await loadTidesModel(); }
+      else throw e;
+    }
+    hiloCache=r.hilo;
+    const predAll=r.pred;
     /* the ribbon is a midnight-to-midnight strip and must stay one day wide;
-       the tide chart wants the full 48 h. Same payload, two slices. */
+       the tide chart wants the full window. Same payload, two slices. */
     const d0=midnight(new Date()), d1=new Date(d0.getTime()+DAYMS);
     const predToday=predAll.filter(p=>{
       const t=new Date(p.t.replace(" ","T"));
       return t>=d0&&t<d1;
     });
-    tideCache=[predAll,hiloCache,obs&&obs.data?obs.data[0]:null];
-    const w=wt&&wt.data&&wt.data[0]?+wt.data[0].v:null;
-    waterTempF=w!=null&&!isNaN(w)?w:null;
+    tideCache=[predAll,hiloCache,r.obs];
+    if(r.wt!=null)waterTempF=r.wt;
     dayData=Object.assign(dayData||{},{pred:predToday,hilo:hiloCache});
     safe(()=>renderTideNow.apply(null,tideCache));
     safe(()=>drawTide.apply(null,tideCache));
@@ -2412,11 +2808,7 @@ async function loadTides(){
     stamp("tideSt"); stamp("ribSt");
   }catch(e){$("tideMeta").innerHTML='<span class="err">Tide feed unavailable — retrying.</span>';}
 }
-/* The four-day list used to be four rows of identical tiles: correct, and mute.
-   Three things were missing and all three are decisions an angler makes from it —
-   how much water moves that day, whether a turn falls in daylight, and which turn
-   is the next one. Elapsed turns are dimmed so the list stops competing with the
-   chart for "where am I". */
+
 function renderTideDays(){
   if(!hiloCache||!hiloCache.length){$("tideDays").innerHTML='<div class="hint">No predictions returned.</div>';return;}
   const byDay={};
@@ -2500,8 +2892,8 @@ async function loadFish(){
     const d=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${LOC[0]}&longitude=${LOC[1]}`+
       `&daily=sunrise,sunset&hourly=pressure_msl,wind_speed_10m&past_hours=12&forecast_hours=6`+
       `&wind_speed_unit=kn&timezone=auto`);
-    const m=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=30.30&longitude=-87.15`+
-      `&current=wave_height,sea_surface_temperature&timezone=auto`).catch(()=>null);
+    const m=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${LOC[0]}&longitude=${LOC[1]}`+
+      `&current=wave_height,sea_surface_temperature&cell_selection=sea&timezone=auto`).catch(()=>null);
     const pr=d.hourly.pressure_msl, prNow=pr[pr.length-1], pr6=pr[pr.length-7]||prNow;
     const trend=prNow-pr6;
     const trendTxt=trend<-1?"FALLING FAST":trend<-0.3?"FALLING":trend>1?"RISING FAST":trend>0.3?"RISING":"STEADY";
@@ -2585,6 +2977,16 @@ async function loadFish(){
 
 /* species list — harvest status first, bite second, recomputed from the clock */
 function renderSpecies(){
+  if(!inGulf()){
+    const el=$("specList");
+    if(el)el.innerHTML='<div class="hint">Species and harvest rules in this build cover the '+
+      'Florida Panhandle / Gulf state waters only, and you are outside that box. '+
+      'Showing them here would be worse than showing nothing — bag limits and seasons '+
+      'are jurisdictional. Tides, bite windows, solunar and conditions all still work.</div>';
+    const th=$("targHdr"); if(th)th.textContent="Targets — out of region";
+    return;
+  }
+  {const th=$("targHdr"); if(th)th.textContent="Targets";}
   const now=new Date(), m=now.getMonth()+1;
   const rows=SPECIES.map(sp=>{
     const st=regStatus(sp.k,now), hot=sp.months.indexOf(m)>=0;
@@ -2635,7 +3037,7 @@ function renderSeasonCal(){
        <td class="r">${dateShort(e.opening?e.d:new Date(e.d-DAYMS))} <span style="color:var(--haze)">· ${e.days}d</span></td></tr>`
     ).join("")+"</table>"
     :'<div class="hint">No season changes in the next year.</div>';
-  $("calSt").textContent="REVIEWED "+REGS_REVIEWED.toUpperCase();
+  $("calSt").textContent=inGulf()?("REVIEWED "+REGS_REVIEWED.toUpperCase()):"OUT OF REGION";
 }
 
 /* ================= ANIMATED WIND FIELD (surface) =================
@@ -3152,7 +3554,12 @@ const safe=f=>{try{const r=f();if(r&&r.catch)r.catch(()=>{});}catch(e){console.w
 let lastSync=Date.now();
 safe(buildRadar); setInterval(()=>safe(buildRadar),300000);
 [loadNow,loadForecast,()=>loadTides().then(loadFish),loadBuoys,loadSwell,loadStorms,loadAlertPolys].forEach(safe);
+/* The watch runs whether or not the location DOT is switched on — the dot is a map
+   layer preference, not a statement about whether the app should know where it is.
+   v5.2 conflated the two and that is why nothing followed you. */
+safe(geoStart);
 safe(()=>{if(S.me.val)locate(false);});
+safe(()=>retarget("boot"));
 setInterval(()=>{lastSync=Date.now();safe(loadNow);},600000);
 setInterval(()=>{if(S.wind&&S.wind.val)safe(()=>windLoad(true));},1200000);
 setInterval(loadForecast,600000);
@@ -3176,6 +3583,7 @@ document.addEventListener("visibilitychange",()=>{
   if(document.hidden){playing=false;return;}
   playing=wantPlay; safe(drawRibbon);
   if(Date.now()-lastSync>600000){[loadNow,loadForecast,loadTides,loadBuoys].forEach(safe);}
+  safe(geoStart);                       /* iOS suspends the watch in the background */
 });
 $("aboutBox").innerHTML=`<b>Cast &amp; Forecast v4.0</b> — Gulf Sensor Net<br>
   Data: NWS · NOAA CO-OPS · NDBC · Open-Meteo Marine · RainViewer · NHC<br>
