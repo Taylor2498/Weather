@@ -131,19 +131,35 @@ tr:last-child td{border-bottom:none}
 .rbKey{display:flex;flex-wrap:wrap;gap:10px;margin-top:9px;font-size:8px;letter-spacing:1.1px;color:var(--haze)}
 .rbKey i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:-1px}
 
-/* tide extras */
-.tide-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:11px;font-size:10px;color:var(--haze)}
-.tide-meta b{color:var(--sky)}
-.tday{margin-bottom:10px}
+/* tide extras (v5.2 redesign) */
+/* a compact variant of the readout tile value: RISING / 4:12 PM don't fit at 23px */
+.nw .v.sm{font-size:14.5px;letter-spacing:0;line-height:1.3}
+#tideCv{touch-action:pan-y;cursor:crosshair;margin-top:11px;border-radius:var(--r2)}
+.tide-meta{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:10px;font-size:9px;
+  letter-spacing:1.1px;color:var(--haze)}
+.tide-meta b{color:var(--sky);letter-spacing:.4px}
+.tide-meta .fw{flex-basis:100%;letter-spacing:.4px;font-size:8.5px;line-height:1.6;color:#6d93a8}
+.tday{margin-bottom:11px}
 .tday:last-child{margin-bottom:0}
-.tday .dh{font-size:8.5px;letter-spacing:1.8px;color:var(--haze);margin-bottom:5px}
+.tday .dh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  font-size:8.5px;letter-spacing:1.8px;color:var(--haze);margin-bottom:5px}
 .tday .dh b{color:var(--foam);font-family:var(--disp);letter-spacing:0;font-size:11px}
-.tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px}
-.tp{background:var(--hull3);border:1px solid var(--rail);border-radius:var(--r3);padding:7px 8px;text-align:center}
+.tday .sw{color:#6d93a8}
+.tday .bd{font-size:7.5px;letter-spacing:1.2px;color:var(--aqua);border:1px solid rgba(56,224,200,.4);
+  background:rgba(56,224,200,.09);border-radius:99px;padding:1px 7px;line-height:1.6}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:6px}
+.tp{position:relative;background:var(--hull3);border:1px solid var(--rail);border-radius:var(--r3);
+  padding:7px 8px;text-align:center}
+.tp.hi{border-color:rgba(95,200,255,.26)} .tp.lo{border-color:rgba(255,194,75,.24)}
+.tp.past{opacity:.4}
+.tp.next{border-color:rgba(56,224,200,.55);box-shadow:0 0 0 1px rgba(56,224,200,.18),var(--inset)}
 .tp .ar{font-size:11px;line-height:1}
 .tp.hi .ar{color:var(--sky)} .tp.lo .ar{color:var(--sun)}
+.tp .dn{position:absolute;top:5px;right:7px;font-size:8.5px;line-height:1;opacity:.8}
+.tp .dn.day{color:var(--sun)} .tp .dn.night{color:var(--orchid)}
 .tp .tm{font-family:var(--disp);font-size:12px;color:var(--foam);font-weight:700;margin-top:2px}
 .tp .ht{font-size:8.5px;color:var(--haze);margin-top:1px}
+.tp .rel{font-size:7.5px;letter-spacing:1px;color:var(--aqua);margin-top:2px}
 
 /* moon */
 .moonRow{display:flex;align-items:center;gap:14px}
@@ -405,7 +421,7 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v5.1</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v5.2</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
@@ -491,12 +507,20 @@ nav button:active svg{transform:scale(.86)}
     <div class="card">
       <div class="c-hd"><h2>Tide — Pensacola 8729840</h2><span class="st" id="tideSt">—</span></div>
       <div class="c-bd">
-        <canvas id="tideCv" height="150"></canvas>
+        <div class="now" id="tideNow"></div>
+        <canvas id="tideCv" height="200"></canvas>
+        <div class="rbKey">
+          <span><i style="background:#5fc8ff"></i>AHEAD</span>
+          <span><i style="background:rgba(146,190,212,.5)"></i>PAST</span>
+          <span><i style="background:#ffc24b"></i>LOW</span>
+          <span><i style="background:#ff6b57"></i>NOW</span>
+          <span><i style="background:rgba(150,205,235,.22)"></i>DAYLIGHT</span>
+        </div>
         <div class="tide-meta" id="tideMeta"></div>
       </div>
     </div>
     <div class="card">
-      <div class="c-hd"><h2>Next four days</h2><span class="st">HIGHS &amp; LOWS · MLLW</span></div>
+      <div class="c-hd"><h2>Next four days</h2><span class="st" id="tdaysSt">HIGHS &amp; LOWS · MLLW</span></div>
       <div class="c-bd" id="tideDays"><div class="hint">Loading predictions…</div></div>
     </div>
     <div class="card">
@@ -899,7 +923,8 @@ tabs.forEach(btn=>{
     const v=btn.dataset.v;
     if(v!=="map")windProbeHide();
     if(v==="map")setTimeout(()=>map.invalidateSize(),60);
-    if(v==="tides")setTimeout(()=>{if(tideCache)drawTide.apply(null,tideCache);drawRibbon();},60);
+    if(v==="tides")setTimeout(()=>{if(tideCache){safe(()=>renderTideNow.apply(null,tideCache));
+      safe(()=>drawTide.apply(null,tideCache));safe(renderTideDays);}drawRibbon();},60);
   };
 });
 addEventListener("load",()=>{const a=document.querySelector("nav button.active");if(a)movePill(a);});
@@ -1038,46 +1063,307 @@ async function loadForecast(){
   }catch(e){}
 }
 
-function drawTide(pred,hilo,obs){
-  const cv=$("tideCv"),ctx=cv.getContext("2d");
-  const r=cv.getBoundingClientRect();
-  if(r.width<10)return;                       // hidden tab; will redraw on show
-  const dpr=Math.min(devicePixelRatio||1,2.5);
-  cv.width=r.width*dpr;cv.height=150*dpr;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  const W=r.width,H=150;
-  ctx.clearRect(0,0,W,H);
-  const vs=pred.map(p=>+p.v), lo=Math.min(...vs)-.15, hi=Math.max(...vs)+.15;
-  const X=i=>i/(pred.length-1)*W, Y=v=>H-14-((v-lo)/(hi-lo))*(H-28);
-  ctx.strokeStyle="rgba(104,174,205,.13)";
-  for(let y=14;y<H;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  ctx.beginPath();ctx.moveTo(0,H);
-  pred.forEach((p,i)=>ctx.lineTo(X(i),Y(+p.v)));
-  ctx.lineTo(W,H);ctx.closePath();
-  const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,"rgba(95,200,255,.3)");g.addColorStop(1,"rgba(95,200,255,.02)");
-  ctx.fillStyle=g;ctx.fill();
-  ctx.beginPath();pred.forEach((p,i)=>i?ctx.lineTo(X(i),Y(+p.v)):ctx.moveTo(X(i),Y(+p.v)));
-  ctx.strokeStyle="#5fc8ff";ctx.lineWidth=2;ctx.stroke();
-  const now=new Date(), t0=new Date(pred[0].t.replace(" ","T")), t1=new Date(pred[pred.length-1].t.replace(" ","T"));
-  const nx=Math.max(0,Math.min(1,(now-t0)/(t1-t0)))*W;
-  ctx.strokeStyle="#ff6b57";ctx.setLineDash([4,4]);
-  ctx.beginPath();ctx.moveTo(nx,6);ctx.lineTo(nx,H-6);ctx.stroke();ctx.setLineDash([]);
-  ctx.fillStyle="#ff6b57";ctx.font="9px 'IBM Plex Mono'";ctx.fillText("NOW",Math.min(nx+4,W-32),12);
-  ctx.fillStyle="#2fd07a";
-  hilo.forEach(p=>{
-    const tt=new Date(p.t.replace(" ","T"));
-    const px=Math.max(0,Math.min(1,(tt-t0)/(t1-t0)))*W;
-    ctx.beginPath();ctx.arc(px,Y(+p.v),3,0,7);ctx.fill();
-  });
-  let obsTxt="";
-  if(obs){
-    ctx.fillStyle="#ffc24b";
-    ctx.beginPath();ctx.arc(nx,Y(+obs.v),4,0,7);ctx.fill();
-    obsTxt=`OBSERVED NOW <b>${fmt(obs.v,2)} FT</b> · `;
+/* ================= TIDE CHART (v5.2 redesign) =================
+   The old chart drew a handsome curve and left the reading to you: no time axis,
+   no foot scale, unlabelled dots, and a midnight-to-midnight window that had
+   almost nothing left in it by 9 PM. This one answers the three questions an
+   angler actually asks, in order — is the water moving, which way, and when does
+   it turn — and it answers them before you have to interpret a line.
+
+   What changed and why:
+   - Rolling window, now-3h .. now+21h. The chart never runs out of future.
+   - The past is drawn muted and the future lit. The eye finds "now" without
+     hunting for a marker.
+   - Highs and lows carry their own height and time. No cross-referencing a caption.
+   - A labelled foot scale with the MLLW zero line, so "1.2 FT" means something.
+   - Night is unshaded, daylight washed lighter: a 5:40 AM low in the dark reads
+     as a 5:40 AM low in the dark.
+   - Drag across it to scrub — any moment reports its time and height.
+   The three readout tiles above the chart carry the answer on their own; the
+   chart is there to show you the shape of it.                                */
+
+const TPL = 32, TPR = 12, TPT = 30, TPB = 26, TIDE_H = 200;
+let tideScrub = null, tideScrubT = null, tideDrag = false, tideWired = false;
+
+const tHM  = t => new Date(t).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+const tHMs = t => tHM(t).replace(/\s?([AP])M$/, "$1");        /* 4:12 PM -> 4:12P */
+
+/* the window every part of this card agrees on */
+function tideWindow(){ const n = Date.now(); return [n - 3*3600000, n + 21*3600000]; }
+
+/* CO-OPS 6-minute predictions, parsed once and clipped to the window */
+function tideSeries(pred, t0, t1){
+  const out = [];
+  if(!pred) return out;
+  for(let i=0;i<pred.length;i++){
+    const t = new Date(pred[i].t.replace(" ","T")).getTime(), v = +pred[i].v;
+    if(isNaN(t)||isNaN(v)) continue;
+    if(t < t0-900000 || t > t1+900000) continue;
+    out.push({t:t, v:v});
   }
-  $("tideMeta").innerHTML=obsTxt+hilo.map(p=>
-    `${p.type==="H"?"▲ HIGH":"▼ LOW"} <b>${new Date(p.t.replace(" ","T")).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</b> ${fmt(p.v,1)}FT`).join(" · ");
+  return out;
+}
+/* linear read between two 6-minute samples — well inside the prediction's own error */
+function tideAt(S, t){
+  if(!S.length) return null;
+  if(t <= S[0].t) return S[0].v;
+  if(t >= S[S.length-1].t) return S[S.length-1].v;
+  let i = 1; while(i < S.length && S[i].t < t) i++;
+  const p = S[i-1], q = S[i];
+  return q.t === p.t ? p.v : p.v + (q.v - p.v) * ((t - p.t) / (q.t - p.t));
+}
+function tideEvents(hilo, t0, t1){
+  return (hilo||[]).map(p => ({t:new Date(p.t.replace(" ","T")).getTime(), v:+p.v, hi:p.type==="H"}))
+    .filter(e => !isNaN(e.t) && !isNaN(e.v) && e.t >= t0 && e.t <= t1)
+    .sort((a,b) => a.t - b.t);
+}
+
+function drawTide(pred, hilo, obs){
+  const cv = $("tideCv"); if(!cv) return;
+  const r = cv.getBoundingClientRect();
+  if(r.width < 10) return;                       /* hidden tab; redraws on show */
+  const W = r.width, H = TIDE_H, dpr = Math.min(devicePixelRatio||1, 2.5);
+  cv.width = W*dpr; cv.height = H*dpr;
+  const c = cv.getContext("2d");
+  c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,W,H);
+
+  const PW = W - TPL - TPR, PH = H - TPT - TPB, PB_Y = TPT + PH;
+  const win = tideWindow(), t0 = win[0], t1 = win[1], span = t1 - t0, nowMs = Date.now();
+  const X = t => TPL + ((t - t0)/span) * PW;
+  const S = tideSeries(pred, t0, t1);
+  if(S.length < 3 || PW < 60) return;
+
+  const rr = (x,y,w,h,rad) => { rad = Math.min(rad, w/2, h/2); c.beginPath();
+    c.moveTo(x+rad,y); c.arcTo(x+w,y,x+w,y+h,rad); c.arcTo(x+w,y+h,x,y+h,rad);
+    c.arcTo(x,y+h,x,y,rad); c.arcTo(x,y,x+w,y,rad); c.closePath(); };
+
+  /* vertical scale — a floor on the span so a 0.4 ft day is not drawn as drama */
+  let lo = S[0].v, hi = S[0].v;
+  for(let i=1;i<S.length;i++){ if(S[i].v<lo) lo=S[i].v; if(S[i].v>hi) hi=S[i].v; }
+  const MINSPAN = 1.2;
+  if(hi - lo < MINSPAN){ const m=(hi+lo)/2; lo = m - MINSPAN/2; hi = m + MINSPAN/2; }
+  lo -= 0.18; hi += 0.30;                        /* headroom for the high labels */
+  const Y = v => TPT + (1 - (v - lo)/(hi - lo)) * PH;
+
+  /* plot bed, then the daylight wash driven by real solar altitude */
+  rr(TPL, TPT, PW, PH, 10); c.fillStyle = "rgba(3,14,22,.62)"; c.fill();
+  const wash = c.createLinearGradient(TPL, 0, TPL + PW, 0);
+  for(let i=0; i<=96; i++){                      /* 15-minute stops; twilight is ~1 h wide */
+    const f = i/96;
+    const alt = sunAlt(new Date(t0 + f*span), LOC[0], LOC[1]) / D2R;
+    const l = Math.max(0, Math.min(1, (alt + 6) / 14));
+    wash.addColorStop(f, "rgba(150,205,235," + (0.125*l).toFixed(3) + ")");
+  }
+  c.save(); rr(TPL, TPT, PW, PH, 10); c.clip();
+  c.fillStyle = wash; c.fillRect(TPL, TPT, PW, PH);
+  c.restore();
+
+  /* foot scale — integer stepping, so 0.0 lands exactly on the datum */
+  /* aim for roughly four labelled lines: two is not a scale, eight is noise */
+  const rng = hi - lo, step = rng<=1.2 ? 0.25 : rng<=2.6 ? 0.5 : rng<=5 ? 1 : 2;
+  const k0 = Math.ceil(lo/step), k1 = Math.floor(hi/step);
+  c.font = "8px 'IBM Plex Mono'"; c.textAlign = "right"; c.textBaseline = "middle";
+  for(let k=k0; k<=k1; k++){
+    const v = k*step, y = Y(v), zero = k === 0;
+    c.strokeStyle = zero ? "rgba(146,190,212,.34)" : "rgba(104,174,205,.11)";
+    c.lineWidth = 1; if(zero) c.setLineDash([3,3]);
+    c.beginPath(); c.moveTo(TPL,y); c.lineTo(TPL+PW,y); c.stroke(); c.setLineDash([]);
+    c.fillStyle = zero ? "rgba(146,190,212,.85)" : "rgba(126,166,187,.6)";
+    c.fillText(v.toFixed(1), TPL-6, y);
+  }
+
+  /* hour rail every 3 h, brighter at local midnight, with the weekday alongside */
+  const first = new Date(t0); first.setMinutes(0,0,0);
+  let tk = first.getTime(); while(new Date(tk).getHours() % 3 !== 0) tk += 3600000;
+  c.textAlign = "center"; c.textBaseline = "alphabetic";
+  for(; tk <= t1; tk += 3*3600000){
+    const x = X(tk), h = new Date(tk).getHours(), mid = h === 0;
+    c.strokeStyle = mid ? "rgba(146,190,212,.28)" : "rgba(104,174,205,.09)";
+    c.lineWidth = 1; c.beginPath(); c.moveTo(x,TPT); c.lineTo(x,PB_Y); c.stroke();
+    c.fillStyle = mid ? "rgba(146,190,212,.85)" : "rgba(126,166,187,.58)";
+    c.font = "8px 'IBM Plex Mono'";
+    c.fillText(h===0?"12A":h===12?"12P":(h>12?(h-12)+"P":h+"A"),
+               Math.min(Math.max(x, TPL+11), TPL+PW-11), H-9);
+    if(mid && tideScrub === null){
+      c.textAlign = "left"; c.fillStyle = "rgba(95,200,255,.7)";
+      c.fillText(new Date(tk).toLocaleDateString("en-US",{weekday:"short"}).toUpperCase(),
+                 Math.min(x+4, TPL+PW-30), 12);
+      c.textAlign = "center";
+    }
+  }
+
+  /* the curve, split at now: muted behind, lit ahead */
+  const pts = S.map(p => ({x:X(p.t), y:Y(p.v)}));
+  let ni = 0; while(ni < S.length-1 && S[ni+1].t <= nowMs) ni++;
+  const fillSeg = (i0,i1,c1,c2) => {
+    if(i1 <= i0) return;
+    c.beginPath(); c.moveTo(pts[i0].x, PB_Y);
+    for(let i=i0;i<=i1;i++) c.lineTo(pts[i].x, pts[i].y);
+    c.lineTo(pts[i1].x, PB_Y); c.closePath();
+    const g = c.createLinearGradient(0, TPT, 0, PB_Y);
+    g.addColorStop(0,c1); g.addColorStop(1,c2); c.fillStyle = g; c.fill();
+  };
+  const lineSeg = (i0,i1,col,wd) => {
+    if(i1 <= i0) return;
+    c.beginPath();
+    for(let i=i0;i<=i1;i++) i===i0 ? c.moveTo(pts[i].x,pts[i].y) : c.lineTo(pts[i].x,pts[i].y);
+    c.strokeStyle = col; c.lineWidth = wd; c.lineJoin = "round"; c.lineCap = "round"; c.stroke();
+  };
+  c.save(); rr(TPL, TPT, PW, PH, 10); c.clip();
+  fillSeg(0, ni, "rgba(126,166,187,.15)", "rgba(126,166,187,.01)");
+  fillSeg(ni, pts.length-1, "rgba(95,200,255,.34)", "rgba(95,200,255,.02)");
+  lineSeg(0, ni, "rgba(146,190,212,.5)", 1.6);
+  lineSeg(ni, pts.length-1, "#5fc8ff", 2.4);
+  c.restore();
+
+  /* highs and lows label themselves. Highs sit above the curve, lows below, so a
+     high and a low three hours apart occupy different bands and cannot collide;
+     only same-type events are tracked for overlap, and those are ~12 h apart. */
+  const evs = tideEvents(hilo, t0, t1);
+  let lastHi = -1e9, lastLo = -1e9;
+  c.textBaseline = "middle"; c.textAlign = "center";
+  evs.forEach(e => {
+    const x = X(e.t), y = Y(e.v), gone = e.t < nowMs;
+    c.fillStyle = gone ? "rgba(146,190,212,.55)" : e.hi ? "#5fc8ff" : "#ffc24b";
+    c.beginPath(); c.arc(x, y, gone ? 3 : 3.6, 0, 7); c.fill();
+    c.strokeStyle = "rgba(3,14,22,.92)"; c.lineWidth = 1.6; c.stroke();
+    c.font = "9px 'IBM Plex Mono'";
+    const label = (e.hi?"H ":"L ") + tHMs(e.t) + "  " + e.v.toFixed(1);
+    const tw = c.measureText(label).width + 13, ph = 15;
+    const px = Math.min(Math.max(x, TPL + tw/2), TPL + PW - tw/2);
+    const left = px - tw/2;
+    if(e.hi){ if(left < lastHi + 4) return; lastHi = px + tw/2; }
+    else    { if(left < lastLo + 4) return; lastLo = px + tw/2; }
+    const py = e.hi ? Math.max(TPT + 9, y - 16) : Math.min(PB_Y - 9, y + 16);
+    rr(left, py - ph/2, tw, ph, 7);
+    c.fillStyle = gone ? "rgba(4,18,28,.62)" : "rgba(4,18,28,.9)"; c.fill();
+    c.strokeStyle = gone ? "rgba(126,166,187,.28)"
+                  : e.hi ? "rgba(95,200,255,.45)" : "rgba(255,194,75,.45)";
+    c.lineWidth = 1; c.stroke();
+    c.fillStyle = gone ? "rgba(146,190,212,.62)" : e.hi ? "#a9e0ff" : "#ffd98a";
+    c.fillText(label, px, py + 0.5);
+  });
+
+  /* now */
+  const useObs = obs && obs.v != null && !isNaN(+obs.v);
+  const nv = useObs ? +obs.v : tideAt(S, nowMs);
+  const nx = X(nowMs);
+  c.setLineDash([3,4]); c.strokeStyle = "rgba(255,107,87,.85)"; c.lineWidth = 1.4;
+  c.beginPath(); c.moveTo(nx, TPT); c.lineTo(nx, PB_Y); c.stroke(); c.setLineDash([]);
+  if(nv != null){
+    c.fillStyle = "#ff6b57"; c.beginPath(); c.arc(nx, Y(nv), 4.2, 0, 7); c.fill();
+    c.strokeStyle = "rgba(3,14,22,.92)"; c.lineWidth = 1.6; c.stroke();
+  }
+  if(tideScrub === null){
+    c.font = "8px 'IBM Plex Mono'"; c.textAlign = "left"; c.textBaseline = "middle";
+    c.fillStyle = "#ff6b57";
+    c.fillText("NOW", Math.min(nx + 5, TPL + PW - 24), 12);
+  }
+
+  /* scrub readout — occupies the top strip while a finger is down */
+  if(tideScrub !== null){
+    const st = t0 + Math.max(0, Math.min(1, tideScrub)) * span;
+    const sv = tideAt(S, st), sx = X(st);
+    c.strokeStyle = "rgba(56,224,200,.9)"; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(sx, TPT); c.lineTo(sx, PB_Y); c.stroke();
+    if(sv != null){
+      c.fillStyle = "#38e0c8"; c.beginPath(); c.arc(sx, Y(sv), 4, 0, 7); c.fill();
+      c.strokeStyle = "rgba(3,14,22,.92)"; c.lineWidth = 1.6; c.stroke();
+    }
+    const txt = new Date(st).toLocaleDateString("en-US",{weekday:"short"}).toUpperCase() +
+                " " + tHM(st) + "   " + (sv==null?"—":sv.toFixed(2) + " FT");
+    c.font = "9px 'IBM Plex Mono'"; c.textAlign = "center"; c.textBaseline = "middle";
+    const tw = c.measureText(txt).width + 16;
+    const px = Math.min(Math.max(sx, TPL + tw/2), TPL + PW - tw/2);
+    rr(px - tw/2, 3, tw, 17, 8);
+    c.fillStyle = "rgba(4,18,28,.94)"; c.fill();
+    c.strokeStyle = "rgba(56,224,200,.5)"; c.lineWidth = 1; c.stroke();
+    c.fillStyle = "#9df0e2"; c.fillText(txt, px, 12);
+  }
+  c.textAlign = "left"; c.textBaseline = "alphabetic";
+  safe(wireTideScrub);
+}
+
+/* Drag to read any moment. Registered once, on the canvas that already exists.
+   touch-action:pan-y in CSS leaves vertical scrolling to the browser and hands us
+   the horizontal movement, so no preventDefault is needed and the tab still scrolls. */
+function wireTideScrub(){
+  const cv = $("tideCv"); if(!cv || tideWired) return; tideWired = true;
+  const set = clientX => {
+    const r = cv.getBoundingClientRect(); if(r.width < 10) return;
+    const PW = r.width - TPL - TPR; if(PW < 60) return;
+    tideScrub = Math.max(0, Math.min(1, (clientX - r.left - TPL) / PW));
+    clearTimeout(tideScrubT);
+    if(tideCache) safe(() => drawTide.apply(null, tideCache));
+  };
+  const release = () => {
+    clearTimeout(tideScrubT);
+    tideScrubT = setTimeout(() => {
+      tideScrub = null;
+      if(tideCache) safe(() => drawTide.apply(null, tideCache));
+    }, 2600);
+  };
+  cv.addEventListener("touchstart", e => { if(e.touches[0]) set(e.touches[0].clientX); }, {passive:true});
+  cv.addEventListener("touchmove",  e => { if(e.touches[0]) set(e.touches[0].clientX); }, {passive:true});
+  cv.addEventListener("touchend", release, {passive:true});
+  cv.addEventListener("touchcancel", release, {passive:true});
+  cv.addEventListener("mousedown", e => { tideDrag = true; set(e.clientX); });
+  window.addEventListener("mousemove", e => { if(tideDrag) set(e.clientX); });
+  window.addEventListener("mouseup", () => { if(tideDrag){ tideDrag = false; release(); } });
+}
+
+/* The three tiles that carry the answer on their own. Kept out of drawTide so a
+   hidden tab (zero-width canvas, early return) still gets a current readout. */
+function renderTideNow(pred, hilo, obs){
+  const el = $("tideNow"); if(!el) return;
+  const win = tideWindow(), t0 = win[0], t1 = win[1], now = Date.now();
+  const S = tideSeries(pred, t0, t1);
+  if(S.length < 3){ el.innerHTML = ""; return; }
+
+  const useObs = obs && obs.v != null && !isNaN(+obs.v);
+  const nv = useObs ? +obs.v : tideAt(S, now);
+  /* half an hour either side of now, so the difference is already ft per hour */
+  const rate = tideAt(S, now + 1800000) - tideAt(S, now - 1800000);
+  const slack = Math.abs(rate) < 0.045;
+  const word  = slack ? "SLACK" : rate > 0 ? "RISING" : "FALLING";
+  const arrow = slack ? "—" : rate > 0 ? "↑" : "↓";
+  const col   = slack ? "var(--kelp)" : rate > 0 ? "var(--sky)" : "var(--sun)";
+
+  const nxt = tideEvents(hilo, now, now + 4*DAYMS)[0] || null;
+  let rel = "—";
+  if(nxt){
+    let mins = Math.round((nxt.t - now)/60000);
+    const h = Math.floor(mins/60); mins -= h*60;
+    rel = (h ? h + "H " : "") + mins + "M · " + fmt(nxt.v,1) + " FT";
+  }
+
+  el.innerHTML =
+    '<div class="nw"><div class="k">HEIGHT NOW</div>' +
+      '<div class="v">' + fmt(nv,2) + '<small>FT</small></div>' +
+      '<div class="s">MLLW · ' + (useObs ? "OBSERVED" : "PREDICTED") + '</div></div>' +
+    '<div class="nw"><div class="k">TREND</div>' +
+      '<div class="v sm" style="color:' + col + '">' + arrow + ' ' + word + '</div>' +
+      '<div class="s">' + (slack ? "AT THE TURN" : fmt(Math.abs(rate),2) + " FT / HR") + '</div></div>' +
+    '<div class="nw"><div class="k">NEXT ' + (nxt ? (nxt.hi ? "HIGH" : "LOW") : "TURN") + '</div>' +
+      '<div class="v sm">' + (nxt ? tHM(nxt.t).replace(/\s?(AM|PM)$/, '<small>$1</small>') : "—") + '</div>' +
+      '<div class="s">' + (nxt ? "IN " + rel : "—") + '</div></div>';
+
+  /* today's swing and the station footnote */
+  const d0 = midnight(new Date()), d1 = new Date(d0.getTime() + DAYMS);
+  const today = tideEvents(hilo, d0.getTime(), d1.getTime());
+  let swing = null;
+  if(today.length > 1){
+    const vs = today.map(e => e.v);
+    swing = Math.max.apply(null, vs) - Math.min.apply(null, vs);
+  }
+  const m = $("tideMeta");
+  if(m) m.innerHTML =
+    '<span>STATION <b>8729840</b> PENSACOLA</span>' +
+    '<span>DATUM <b>MLLW</b></span>' +
+    (waterTempF != null ? '<span>WATER <b>' + Math.round(waterTempF) + '°F</b></span>' : '') +
+    (swing != null ? '<span>SWING TODAY <b>' + fmt(swing,1) + ' FT</b></span>' : '') +
+    '<span class="fw">Window runs three hours back to twenty-one ahead. ' +
+      'Drag across the chart to read any moment.</span>';
 }
 
 function parseNDBC(txt){
@@ -2095,22 +2381,30 @@ const COOPS="https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=8
             "&datum=MLLW&units=english&time_zone=lst_ldt&format=json";
 function todayStamp(){const d=new Date();
   return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");}
+function yestStamp(){const d=new Date(Date.now()-DAYMS);
+  return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");}
 async function loadTides(){
   try{
     const [pred,hilo,obs,wt]=await Promise.all([
-      jget(COOPS+"&product=predictions&date=today"),
+      jget(COOPS+"&product=predictions&begin_date="+yestStamp()+"&range=72"),
       jget(COOPS+"&product=predictions&interval=hilo&begin_date="+todayStamp()+"&range=96"),
       jget(COOPS+"&product=water_level&date=latest").catch(()=>null),
       jget(COOPS+"&product=water_temperature&date=latest").catch(()=>null)
     ]);
     hiloCache=hilo.predictions||[];
-    tideCache=[pred.predictions,hiloCache.filter(p=>{
+    const predAll=pred.predictions||[];
+    /* the ribbon is a midnight-to-midnight strip and must stay one day wide;
+       the tide chart wants the full 48 h. Same payload, two slices. */
+    const d0=midnight(new Date()), d1=new Date(d0.getTime()+DAYMS);
+    const predToday=predAll.filter(p=>{
       const t=new Date(p.t.replace(" ","T"));
-      return t>=midnight(new Date())&&t<new Date(midnight(new Date()).getTime()+DAYMS);
-    }),obs&&obs.data?obs.data[0]:null];
+      return t>=d0&&t<d1;
+    });
+    tideCache=[predAll,hiloCache,obs&&obs.data?obs.data[0]:null];
     const w=wt&&wt.data&&wt.data[0]?+wt.data[0].v:null;
     waterTempF=w!=null&&!isNaN(w)?w:null;
-    dayData=Object.assign(dayData||{},{pred:pred.predictions,hilo:hiloCache});
+    dayData=Object.assign(dayData||{},{pred:predToday,hilo:hiloCache});
+    safe(()=>renderTideNow.apply(null,tideCache));
     safe(()=>drawTide.apply(null,tideCache));
     safe(renderTideDays);
     safe(renderMoon);
@@ -2118,6 +2412,11 @@ async function loadTides(){
     stamp("tideSt"); stamp("ribSt");
   }catch(e){$("tideMeta").innerHTML='<span class="err">Tide feed unavailable — retrying.</span>';}
 }
+/* The four-day list used to be four rows of identical tiles: correct, and mute.
+   Three things were missing and all three are decisions an angler makes from it —
+   how much water moves that day, whether a turn falls in daylight, and which turn
+   is the next one. Elapsed turns are dimmed so the list stops competing with the
+   chart for "where am I". */
 function renderTideDays(){
   if(!hiloCache||!hiloCache.length){$("tideDays").innerHTML='<div class="hint">No predictions returned.</div>';return;}
   const byDay={};
@@ -2126,16 +2425,41 @@ function renderTideDays(){
     const key=t.toDateString();
     (byDay[key]=byDay[key]||[]).push({t:t,v:+p.v,hi:p.type==="H"});
   });
-  const today=new Date().toDateString(), tom=new Date(Date.now()+DAYMS).toDateString();
-  $("tideDays").innerHTML=Object.keys(byDay).slice(0,4).map(k=>{
+  const now=Date.now();
+  const today=new Date().toDateString(), tom=new Date(now+DAYMS).toDateString();
+  const keys=Object.keys(byDay).slice(0,4);
+  const swing=keys.map(k=>{
+    const vs=byDay[k].map(p=>p.v);
+    return Math.max.apply(null,vs)-Math.min.apply(null,vs);
+  });
+  const best=swing.indexOf(Math.max.apply(null,swing));
+  /* the first turn still ahead of us, anywhere in the four days */
+  let nextT=Infinity;
+  keys.forEach(k=>byDay[k].forEach(p=>{const t=p.t.getTime(); if(t>now&&t<nextT)nextT=t;}));
+
+  $("tideDays").innerHTML=keys.map((k,ki)=>{
     const d=new Date(k);
     const label=k===today?"TODAY":k===tom?"TOMORROW":d.toLocaleDateString("en-US",{weekday:"long"}).toUpperCase();
-    return `<div class="tday"><div class="dh">${label} · <b>${d.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</b></div>
-      <div class="tgrid">${byDay[k].map(p=>`
-        <div class="tp ${p.hi?"hi":"lo"}"><div class="ar">${p.hi?"▲":"▼"}</div>
+    const badge=(ki===best&&swing[best]>0)?'<span class="bd">MOST WATER</span>':"";
+    return `<div class="tday"><div class="dh">${label} · <b>${d.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</b>
+        <span class="sw">SWING ${swing[ki].toFixed(1)} FT</span>${badge}</div>
+      <div class="tgrid">${byDay[k].map(p=>{
+        const ms=p.t.getTime(), past=ms<now, isNext=ms===nextT;
+        const day=sunAlt(p.t,LOC[0],LOC[1])>-0.833*D2R;
+        let rel="";
+        if(isNext){
+          let mins=Math.round((ms-now)/60000);
+          const h=Math.floor(mins/60); mins-=h*60;
+          rel=`<div class="rel">IN ${h?h+"H ":""}${mins}M</div>`;
+        }
+        return `<div class="tp ${p.hi?"hi":"lo"}${past?" past":""}${isNext?" next":""}">
+          <div class="dn ${day?"day":"night"}">${day?"☀":"☾"}</div>
+          <div class="ar">${p.hi?"▲":"▼"}</div>
           <div class="tm">${p.t.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>
-          <div class="ht">${p.v.toFixed(1)} FT</div></div>`).join("")}</div></div>`;
+          <div class="ht">${p.v.toFixed(1)} FT</div>${rel}</div>`;
+      }).join("")}</div></div>`;
   }).join("");
+  const st=$("tdaysSt"); if(st)st.textContent="HIGHS & LOWS · MLLW";
   tideDaysCache=byDay;
 }
 function renderMoon(){
