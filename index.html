@@ -131,6 +131,66 @@ tr:last-child td{border-bottom:none}
 .rbKey{display:flex;flex-wrap:wrap;gap:10px;margin-top:9px;font-size:8px;letter-spacing:1.1px;color:var(--haze)}
 .rbKey i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:-1px}
 
+/* ===== BUOY TILES (v5.4) =====
+   The table this replaces had ten columns on a 390 px screen. STATION was column
+   one, so the moment you scrolled to read the wind you lost which buoy you were
+   reading — the screenshot that prompted this shows six rows of numbers belonging
+   to nobody. Tiles carry their own identity and never scroll sideways. */
+.btile{position:relative;background:var(--hull3);border:1px solid var(--rail);
+  border-radius:var(--r2);padding:11px 12px 10px;margin-bottom:8px;overflow:hidden}
+.btile:last-of-type{margin-bottom:0}
+.btile.obs{border-color:rgba(56,224,200,.32)}
+.btile .bt-hd{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.btile .bt-id{font-family:var(--disp);font-size:14px;font-weight:800;color:var(--foam);
+  letter-spacing:-.2px;white-space:nowrap}
+.btile .bt-nm{font-size:9px;letter-spacing:1.4px;color:var(--haze);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btile .bt-sub{font-size:8.5px;letter-spacing:1.2px;color:#6d93a8;margin-bottom:9px}
+.btile .bt-main{display:flex;align-items:flex-end;gap:12px}
+.btile .bt-big{font-family:var(--disp);font-size:29px;font-weight:800;line-height:.95;
+  color:var(--foam);letter-spacing:-1.2px}
+.btile .bt-big small{font-size:11px;font-weight:600;color:var(--haze);letter-spacing:0;margin-left:2px}
+.btile .bt-per{font-size:9.5px;letter-spacing:1.2px;color:var(--haze);margin-top:3px}
+.btile .bt-state{margin-left:auto;text-align:right}
+.btile .bt-word{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.2px}
+.btile .bt-from{font-size:8.5px;letter-spacing:1.2px;color:var(--haze);margin-top:2px}
+/* sea-state meter: 0-6 ft mapped across the tile, so calm and rough differ at a glance */
+.btile .bt-bar{height:4px;border-radius:99px;background:rgba(104,174,205,.13);margin:9px 0 8px;overflow:hidden}
+.btile .bt-bar i{display:block;height:100%;border-radius:99px;transition:width .4s ease}
+.btile .bt-strip{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:9px;letter-spacing:1.1px;color:var(--haze)}
+.btile .bt-strip b{color:var(--foam);font-family:var(--disp);letter-spacing:0;font-size:11px}
+.btile .bt-strip .sq{color:var(--sun)}
+.btile .bt-act{display:flex;gap:7px;margin-top:10px}
+.btile .bt-act .btn2{flex:0 0 auto}
+.btile .bt-act .sp{flex:1}
+/* direction arrows point the way the sea/wind is GOING, rotated from the FROM bearing */
+.arw{display:inline-block;width:9px;height:9px;vertical-align:-1px;
+  background:currentColor;-webkit-mask:var(--am) center/contain no-repeat;mask:var(--am) center/contain no-repeat;
+  --am:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 L19 22 L12 17 L5 22 Z' fill='black'/%3E%3C/svg%3E")}
+/* two-stage delete. The old X removed a station on a single accidental tap and the
+   only recovery was retyping it, which is exactly the complaint that produced this. */
+.btile .btn2.armed{border-color:var(--coral);color:var(--coral);background:rgba(255,107,87,.12)}
+#bUndo{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 78px);
+  z-index:60;display:none;align-items:center;gap:10px;padding:11px 13px;
+  background:rgba(8,26,38,.96);border:1px solid rgba(56,224,200,.4);border-radius:var(--r2);
+  box-shadow:0 8px 28px rgba(0,0,0,.5);backdrop-filter:blur(8px)}
+#bUndo.show{display:flex}
+#bUndo span{flex:1;font-size:10px;letter-spacing:1.1px;color:var(--foam)}
+/* search */
+.bsearch{margin-top:12px}
+.bsearch input{width:100%}
+#bqres{margin-top:7px;max-height:250px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.bres{display:flex;align-items:center;gap:9px;padding:9px 10px;background:var(--hull3);
+  border:1px solid var(--rail);border-radius:var(--r3);margin-bottom:5px}
+.bres .rid{font-family:var(--disp);font-size:12px;font-weight:700;color:var(--foam)}
+.bres .rnm{flex:1;min-width:0;font-size:9px;letter-spacing:1.2px;color:var(--haze);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bres .rkm{font-size:8.5px;letter-spacing:1px;color:#6d93a8;white-space:nowrap}
+.bres.on{border-color:rgba(56,224,200,.4);opacity:.55}
+.bres .btn2[disabled]{opacity:.5;pointer-events:none}
+#bManual{display:none;margin-top:8px}
+#bManual.show{display:block}
+
 /* tide extras (v5.2 redesign) */
 /* a compact variant of the readout tile value: RISING / 4:12 PM don't fit at 23px */
 .nw .v.sm{font-size:14.5px;letter-spacing:0;line-height:1.3}
@@ -421,13 +481,14 @@ nav button:active svg{transform:scale(.86)}
     </svg>
     <div>
       <h1>CAST <span>&amp; FORECAST</span></h1>
-      <div class="sub"><span class="vchip" id="verChip">v5.3</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
+      <div class="sub"><span class="vchip" id="verChip">v5.4</span><span class="loc" id="hdrLoc">LOCATING…</span></div>
     </div>
   </div>
   <div id="clock"><b>--:--:--</b><span id="upd">SYNCING</span></div>
 </header>
 
 <div id="alerts"></div>
+<div id="bUndo"><span id="bUndoTxt"></span><button class="btn2" id="bUndoBtn">UNDO</button></div>
 
 <div id="views">
 
@@ -463,7 +524,8 @@ nav button:active svg{transform:scale(.86)}
     <div class="card">
       <div class="c-hd"><h2>Buoy network</h2><span class="st" id="buoySt">—</span></div>
       <div class="c-bd">
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table id="buoyTbl"></table></div>
+        <div class="hint" id="buoyNote" style="display:none;margin-bottom:10px"></div>
+        <div id="buoyList"></div>
         <div id="camBox" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
             <span id="camTitle" style="color:var(--aqua);font-size:9.5px;letter-spacing:1.6px">BUOYCAM</span>
@@ -472,15 +534,20 @@ nav button:active svg{transform:scale(.86)}
           <img id="camImg" alt="buoy camera">
           <div id="camNote">Live mast camera · NOAA BuoyCAM · tap the image to enlarge</div>
         </div>
-        <div class="addrow">
-          <select id="addBuoySel"><option value="">+ ADD BUOY FROM DIRECTORY</option></select>
-          <button class="btn2" id="addBuoyBtn">ADD</button>
-        </div>
-        <div class="addrow">
-          <input id="cId" placeholder="CUSTOM NDBC ID" maxlength="6">
-          <input id="cLat" placeholder="LAT" inputmode="decimal">
-          <input id="cLon" placeholder="LON" inputmode="decimal">
-          <button class="btn2" id="addCustomBtn">ADD</button>
+        <div class="bsearch">
+          <input id="bq" placeholder="SEARCH — STATION NUMBER OR NAME" autocomplete="off"
+                 autocapitalize="characters" spellcheck="false">
+          <div id="bqres"></div>
+          <div id="bManual">
+            <div class="hint" style="margin-bottom:7px">Not in the directory. NDBC needs a position
+              to place it on the map and to fall back to the model, so add its coordinates.</div>
+            <div class="addrow">
+              <input id="cId" placeholder="NDBC ID" maxlength="7">
+              <input id="cLat" placeholder="LAT" inputmode="decimal">
+              <input id="cLon" placeholder="LON" inputmode="decimal">
+              <button class="btn2" id="addCustomBtn">ADD</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1679,40 +1746,117 @@ function activeBuoys(){
   return [{id:"LOCAL",name:(GEO.place||"LOCAL WATERS").toUpperCase(),
            lat:LOC[0],lon:LOC[1],core:true,modelOnly:true}];
 }
+/* Sea state in words. A number alone does not tell you whether to go; "2.1 FT"
+   means different things to a bay boat and to a 31 ft centre console, but "LIGHT
+   CHOP" reads the same to everyone and is what you actually say out loud. */
+function seaState(ft){
+  if(ft==null||isNaN(ft))return {w:"NO DATA", c:"var(--haze)", f:0};
+  if(ft<0.5) return {w:"GLASS",       c:"#38e0c8", f:ft/6};
+  if(ft<1)   return {w:"RIPPLE",      c:"#5fe0a8", f:ft/6};
+  if(ft<2)   return {w:"LIGHT CHOP",  c:"#9fd85f", f:ft/6};
+  if(ft<3)   return {w:"CHOPPY",      c:"#ffc24b", f:ft/6};
+  if(ft<5)   return {w:"ROUGH",       c:"#ff9d4b", f:ft/6};
+  if(ft<8)   return {w:"HEAVY",       c:"#ff6b57", f:ft/6};
+  return {w:"DANGEROUS", c:"#ff4d6b", f:1};
+}
+/* initial bearing, used for "18 NM SSE" */
+function bearingTo(a1,o1,a2,o2){
+  const R=Math.PI/180, p1=a1*R, p2=a2*R, dl=(o2-o1)*R;
+  const y=Math.sin(dl)*Math.cos(p2);
+  const x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return (Math.atan2(y,x)/R+360)%360;
+}
+const NM=km=>km*0.539957;
+
 async function loadBuoys(){
-  const BUOYS=activeBuoys();
-  const marine=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
+  const LIST=activeBuoys();
+  const marine=await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${LIST.map(b=>b.lat)}&longitude=${LIST.map(b=>b.lon)}`+
     `&current=wave_height,wave_period,wave_direction,sea_surface_temperature&cell_selection=sea&timezone=auto`).catch(()=>null);
-  const wx=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${BUOYS.map(b=>b.lat)}&longitude=${BUOYS.map(b=>b.lon)}`+
+  const wx=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${LIST.map(b=>b.lat)}&longitude=${LIST.map(b=>b.lon)}`+
     `&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kn&timezone=auto`).catch(()=>null);
   const mArr=Array.isArray(marine)?marine:[marine], wArr=Array.isArray(wx)?wx:[wx];
-  let html=`<tr><th>STATION</th><th class="r">WAVES</th><th class="r">PERIOD</th><th class="r">WIND</th><th class="r">GUST</th><th class="r">PRES</th><th class="r">H₂O</th><th>SRC</th><th></th><th></th></tr>`;
-  for(let i=0;i<BUOYS.length;i++){
-    const b=BUOYS[i];
+
+  const rows=[];
+  for(let i=0;i<LIST.length;i++){
+    const b=LIST[i];
     let d={},src="MODEL";
     try{
       if(b.modelOnly)throw new Error("model only");
       const o=parseNDBC(await tget(`https://www.ndbc.noaa.gov/data/realtime2/${b.id}.txt`));
-      if(o){d={wv:ft(o.WVHT),per:o.DPD,wind:o.WSPD*1.944,gust:o.GST*1.944,pres:o.PRES,wtmp:o.WTMP!=null?o.WTMP*9/5+32:null,dir:o.MWD};src="OBS";}
+      if(o){d={wv:ft(o.WVHT),per:o.DPD,wind:o.WSPD*1.944,gust:o.GST*1.944,pres:o.PRES,
+               wtmp:o.WTMP!=null?o.WTMP*9/5+32:null,dir:o.MWD,wdir:o.WDIR};src="OBS";}
     }catch(e){}
-    if(src==="MODEL"&&mArr?.[i]?.current){
-      const m=mArr[i].current,w=wArr?.[i]?.current||{};
-      d={wv:ft(m.wave_height),per:m.wave_period,wind:w.wind_speed_10m,gust:w.wind_gusts_10m,pres:w.pressure_msl,
-         wtmp:m.sea_surface_temperature!=null?m.sea_surface_temperature*9/5+32:null,dir:m.wave_direction};
+    if(src==="MODEL"&&mArr&&mArr[i]&&mArr[i].current){
+      const m=mArr[i].current, w=(wArr&&wArr[i]&&wArr[i].current)||{};
+      d={wv:ft(m.wave_height),per:m.wave_period,wind:w.wind_speed_10m,gust:w.wind_gusts_10m,
+         pres:w.pressure_msl,wtmp:m.sea_surface_temperature!=null?m.sea_surface_temperature*9/5+32:null,
+         dir:m.wave_direction,wdir:w.wind_direction_10m};
     }
-    html+=`<tr><td><b>${b.id}</b> ${b.name}</td>
-      <td class="r cc"><b>${fmt(d.wv)}FT</b></td><td class="r">${fmt(d.per,0)}S</td>
-      <td class="r">${fmt(d.wind,0)}KT</td><td class="r ${d.gust>=25?"ca":""}">${fmt(d.gust,0)}KT</td>
-      <td class="r">${fmt(d.pres,1)}</td><td class="r">${fmt(d.wtmp,0)}°F</td>
-      <td><span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></td><td><button class="btn2" data-cam="${b.id}">CAM</button></td><td>${b.core?"":`<button class="btn2 warn" data-del="${b.id}">X</button>`}</td></tr>`;
-    b.marker.setPopupContent(`
-      <div class="pp-h">NDBC ${b.id} · ${b.name} <span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></div>
+    const distKm=kmBetween(LOC[0],LOC[1],b.lat,b.lon);
+    rows.push({b:b,d:d,src:src,km:distKm,brg:bearingTo(LOC[0],LOC[1],b.lat,b.lon)});
+
+    /* the LOCAL pseudo-station created outside the Gulf has no map marker; v5.3
+       called setPopupContent on it unconditionally and threw before the card ever
+       rendered, so the whole buoy panel came up blank abroad */
+    if(b.marker) b.marker.setPopupContent(
+      `<div class="pp-h">NDBC ${b.id} · ${b.name} <span class="pp-src ${src==="OBS"?"obs":""}">${src}</span></div>
       <div class="pp-row"><span>WAVES</span><b>${fmt(d.wv)} FT @ ${fmt(d.per,0)}S ${d.dir!=null?dirTxt(d.dir):""}</b></div>
       <div class="pp-row"><span>WIND</span><b>${fmt(d.wind,0)} KT G${fmt(d.gust,0)}</b></div>
       <div class="pp-row"><span>PRES</span><b>${fmt(d.pres,1)} MB</b></div>
       <div class="pp-row"><span>WATER</span><b>${fmt(d.wtmp,0)} °F</b></div>`);
   }
-  $("buoyTbl").innerHTML=html;
+  rows.sort((x,y)=>x.km-y.km);                     /* nearest first: what you check */
+
+  $("buoyList").innerHTML = rows.map(r=>{
+    const d=r.d, st=seaState(d.wv);
+    const squall = d.gust!=null && d.wind!=null && (d.gust-d.wind)>=10;
+    const dist = r.km<0.5 ? "AT YOUR POSITION"
+      : `${Math.round(NM(r.km))} NM ${dirTxt(r.brg)}`;
+    return `<div class="btile ${r.src==="OBS"?"obs":""}" data-id="${r.b.id}">
+      <div class="bt-hd">
+        <span class="bt-id">${r.b.id}</span>
+        <span class="bt-nm">${r.b.name}</span>
+        <span class="pp-src ${r.src==="OBS"?"obs":""}">${r.src}</span>
+      </div>
+      <div class="bt-sub">${dist}</div>
+      <div class="bt-main">
+        <div>
+          <div class="bt-big">${fmt(d.wv)}<small>FT</small></div>
+          <div class="bt-per">${d.per!=null?"@ "+fmt(d.per,0)+" SEC":"PERIOD —"}</div>
+        </div>
+        <div class="bt-state">
+          <div class="bt-word" style="color:${st.c}">${st.w}</div>
+          <div class="bt-from">${d.dir!=null?`SWELL FROM ${dirTxt(d.dir)} <i class="arw" style="transform:rotate(${(d.dir+180)%360}deg);color:${st.c}"></i>`:"&nbsp;"}</div>
+        </div>
+      </div>
+      <div class="bt-bar"><i style="width:${Math.round(Math.max(0.02,Math.min(1,st.f))*100)}%;background:${st.c}"></i></div>
+      <div class="bt-strip">
+        <span>WIND <b>${fmt(d.wind,0)}</b>${d.gust!=null?` G<b class="${squall?"sq":""}">${fmt(d.gust,0)}</b>`:""} KT${
+          d.wdir!=null?` <i class="arw" style="transform:rotate(${(d.wdir+180)%360}deg)"></i> ${dirTxt(d.wdir)}`:""}</span>
+        <span>PRES <b>${fmt(d.pres,1)}</b></span>
+        <span>H₂O <b>${fmt(d.wtmp,0)}°</b></span>
+      </div>
+      <div class="bt-act">
+        <button class="btn2" data-cam="${r.b.id}">CAM</button>
+        <span class="sp"></span>
+        ${r.b.core?"":`<button class="btn2 warn" data-del="${r.b.id}">REMOVE</button>`}
+      </div>
+    </div>`;
+  }).join("") || '<div class="hint">No stations. Search below to add one.</div>';
+
+  /* If every station fell back to the model, say so once rather than letting six
+     grey MODEL chips imply six independent failures. */
+  const anyObs=rows.some(r=>r.src==="OBS"), realStations=rows.filter(r=>!r.b.modelOnly).length;
+  const note=$("buoyNote");
+  if(note){
+    if(realStations&&!anyObs){
+      note.style.display="block";
+      note.innerHTML="No station is returning live observations, so every reading below is "+
+        "<b>modelled</b> at the buoy's position rather than measured by it. NDBC's realtime feed "+
+        "does not send CORS headers, so a browser cannot read it directly — see HANDOFF for the "+
+        "baked-feed fix.";
+    } else note.style.display="none";
+  }
   stamp("buoySt");
 }
 /* buoy cam viewer + row actions */
@@ -1726,14 +1870,56 @@ function showCam(id){
     $("camNote").textContent="NO CAMERA AT "+id+" - NOT ALL BUOYS CARRY ONE. TRY 42012, 42039 OR 42040.";};
   img.src="https://www.ndbc.noaa.gov/buoycam.php?station="+id+"&cb="+Date.now();
 }
-$("buoyTbl").addEventListener("click",e=>{
-  const t=e.target;
-  if(t.dataset&&t.dataset.cam)showCam(t.dataset.cam);
-  if(t.dataset&&t.dataset.del){
-    const i=BUOYS.findIndex(b=>b.id===t.dataset.del);
-    if(i>=0){if(BUOYS[i].marker)gBuoys.removeLayer(BUOYS[i].marker);BUOYS.splice(i,1);saveBuoys();fillBuoySel();loadBuoys();}
+/* Removal now takes two deliberate taps and is still reversible for eight seconds.
+   One stray tap on a small target used to delete a station outright, and the only
+   way back was retyping its id and coordinates. */
+let bArmed=null, bArmT=null, bUndoT=null, bTrash=null;
+function disarmBuoy(){
+  clearTimeout(bArmT); bArmed=null;
+  const list=$("buoyList"); if(!list)return;
+  list.querySelectorAll?list.querySelectorAll(".btn2.armed").forEach(el=>{
+    el.classList.remove("armed"); el.textContent="REMOVE";
+  }):0;
+}
+function removeBuoy(id){
+  const i=BUOYS.findIndex(b=>b.id===id);
+  if(i<0)return;
+  const b=BUOYS[i];
+  bTrash={id:b.id,name:b.name,lat:b.lat,lon:b.lon};
+  if(b.marker)gBuoys.removeLayer(b.marker);
+  BUOYS.splice(i,1); saveBuoys(); fillBuoySel(); safe(loadBuoys);
+  const u=$("bUndo");
+  if(u){
+    $("bUndoTxt").textContent=b.id+" REMOVED";
+    u.classList.add("show");
+    clearTimeout(bUndoT);
+    bUndoT=setTimeout(()=>{u.classList.remove("show");bTrash=null;},8000);
+  }
+}
+$("buoyList").addEventListener("click",e=>{
+  const t=e.target.closest?e.target.closest("button"):e.target;
+  if(!t||!t.dataset)return;
+  if(t.dataset.cam){ disarmBuoy(); showCam(t.dataset.cam); return; }
+  if(t.dataset.del){
+    const id=t.dataset.del;
+    if(bArmed===id){ disarmBuoy(); removeBuoy(id); return; }
+    disarmBuoy();
+    bArmed=id; t.classList.add("armed"); t.textContent="TAP AGAIN";
+    bArmT=setTimeout(disarmBuoy,4000);          /* never stays armed by accident */
   }
 });
+$("bUndoBtn").onclick=()=>{
+  clearTimeout(bUndoT);
+  $("bUndo").classList.remove("show");
+  if(bTrash){ addBuoy(bTrash); bTrash=null; }
+};
+$("bqres").addEventListener("click",e=>{
+  const t=e.target;
+  if(!t.dataset||!t.dataset.add)return;
+  const d=BUOY_DIR.find(x=>x.id===t.dataset.add);
+  if(d){ addBuoy({id:d.id,name:d.name,lat:d.lat,lon:d.lon}); $("bq").value=""; }
+});
+$("bq").addEventListener("input",()=>safe(()=>renderBuoySearch($("bq").value)));
 $("camClose").onclick=()=>{$("camBox").style.display="none";};
 /* ---- fullscreen pinch-zoom lightbox ---- */
 const lbEl=$("lightbox"),lbImg=$("lbImg");
@@ -1798,26 +1984,57 @@ lbEl.addEventListener("pointermove",e=>{
 const lbUp=e=>{lbPts.delete(e.pointerId);};
 lbEl.addEventListener("pointerup",lbUp);
 lbEl.addEventListener("pointercancel",lbUp);
-function fillBuoySel(){
-  const sel=$("addBuoySel");
-  sel.innerHTML="<option value=\"\">+ ADD BUOY FROM DIRECTORY</option>"+
-    BUOY_DIR.filter(d=>!BUOYS.some(b=>b.id===d.id))
-      .map(d=>`<option value="${d.id}">${d.id} - ${d.name}</option>`).join("");
+/* The dropdown is gone. You asked to type a station number and have it come up,
+   which is also the only thing that scales past a nine-entry directory: match on id
+   OR name, rank by distance from you, and let an unknown id fall through to a
+   coordinates form instead of a dead end. */
+function fillBuoySel(){ renderBuoySearch($("bq")?$("bq").value:""); }
+
+function renderBuoySearch(q){
+  const box=$("bqres"), man=$("bManual");
+  if(!box)return;
+  q=(q||"").trim().toUpperCase();
+  const added=id=>BUOYS.some(b=>b.id===id);
+  let hits=BUOY_DIR.slice();
+  if(q) hits=hits.filter(d=>d.id.toUpperCase().includes(q)||d.name.toUpperCase().includes(q));
+  hits=hits.map(d=>Object.assign({},d,{km:kmBetween(LOC[0],LOC[1],d.lat,d.lon)}))
+           .sort((a,b)=>a.km-b.km);
+
+  /* an id-shaped query that matches nothing known is not a failure, it is a station
+     we simply do not have a position for */
+  const idish=/^[A-Z0-9]{4,7}$/.test(q) && !hits.some(h=>h.id.toUpperCase()===q);
+  if(man){
+    man.classList.toggle("show", idish);
+    /* keep the id in step with what is actually typed. Prefilling only when the field
+       was empty meant a second search left the previous station's number sitting in
+       the form, one tap away from adding the wrong buoy. */
+    if(idish && $("cId")) $("cId").value=q;
+  }
+  const shown=q?hits.slice(0,8):hits.slice(0,4);
+  box.innerHTML = shown.length ? shown.map(d=>{
+    const on=added(d.id);
+    return `<div class="bres ${on?"on":""}">
+      <span class="rid">${d.id}</span>
+      <span class="rnm">${d.name}</span>
+      <span class="rkm">${Math.round(NM(d.km))} NM</span>
+      <button class="btn2" data-add="${d.id}" ${on?"disabled":""}>${on?"ON":"ADD"}</button>
+    </div>`;}).join("")
+    : (idish ? "" : '<div class="hint">Nothing in the directory matches that.</div>');
 }
 function addBuoy(b){
   if(BUOYS.some(x=>x.id===b.id))return;
   BUOYS.push(b);addBuoyMarker(b);saveBuoys();fillBuoySel();loadBuoys();
 }
-$("addBuoyBtn").onclick=()=>{
-  const id=$("addBuoySel").value;if(!id)return;
-  const d=BUOY_DIR.find(x=>x.id===id);if(d)addBuoy({id:d.id,name:d.name,lat:d.lat,lon:d.lon});
-};
+/* the directory <select> is gone — search replaced it — so only the coordinates
+   form remains, and it is revealed by an id-shaped query that matched nothing */
 $("addCustomBtn").onclick=()=>{
   const id=($("cId").value||"").trim().toUpperCase();
   const lat=parseFloat($("cLat").value),lon=parseFloat($("cLon").value);
   if(!id||isNaN(lat)||isNaN(lon))return;
-  addBuoy({id:id,name:"CUSTOM",lat:lat,lon:lon});
+  if(Math.abs(lat)>90||Math.abs(lon)>180)return;
+  addBuoy({id:id,name:"CUSTOM "+id,lat:lat,lon:lon});
   $("cId").value=$("cLat").value=$("cLon").value="";
+  $("bq").value=""; safe(()=>renderBuoySearch(""));
 };
 fillBuoySel();
 
@@ -3021,6 +3238,15 @@ function renderSpecies(){
   }).join(""):'<div class="hint">Nothing matches that filter right now.</div>';
 }
 function renderSeasonCal(){
+  /* The targets card refuses to show Florida rules out of region; this card has to
+     agree with it. Leaving a "RED SNAPPER OPENS" row up in the Adriatic is exactly
+     the plausible-looking wrong answer the gate exists to prevent. */
+  if(!inGulf()){
+    $("seasonCal").innerHTML='<div class="hint">Season windows are Florida / Gulf state '+
+      'rules and do not apply where you are. Tides, bite windows and conditions are unaffected.</div>';
+    $("calSt").textContent="OUT OF REGION";
+    return;
+  }
   const now=new Date();
   const events=[];
   SPECIES.forEach(sp=>{
