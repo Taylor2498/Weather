@@ -1,1 +1,1 @@
-{"format":"cf-wind-1","cycle":"2026-10-28T18:00:00Z","built":"2026-10-29T01:51:02Z","nx":361,"ny":181,"lo1":-180.0,"la1":-90.0,"dx":1.0,"dy":1.0,"scale":0.1,"unit":"kn","peak":95.5,"mean":12.5,"source":"NOAA GFS 0.5deg via NOMADS"}
+{"format":"cf-wind-1","cycle":"2026-10-29T06:00:00Z","built":"2026-10-29T10:57:17Z","nx":361,"ny":181,"lo1":-180.0,"la1":-90.0,"dx":1.0,"dy":1.0,"scale":0.1,"unit":"kn","peak":79.4,"mean":12.4,"source":"NOAA GFS 0.5deg via NOMADS"}
